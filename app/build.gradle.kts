@@ -11,8 +11,8 @@ android {
         applicationId = "com.rfsat.vtb"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
     }
 
     signingConfigs {
@@ -73,5 +73,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.11.0")
 
     // Charts for the wind-vs-time / trajectory results screen
-    implementation("com.jjoe64:graphview:4.2.2")
+    implementation("com.jjoe64:graphview:4.2.2") {
+        exclude(group = "com.android.support")
+    }
 }

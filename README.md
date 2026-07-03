@@ -98,6 +98,11 @@ increments on corrections/fixes with no new capability. Shown as
   context directly inside a step's `if:` condition ("Unrecognized
   named-value: 'secrets'"). Routed the keystore check through a job-level
   `env` var instead. No app code changes.
+- **v1.3** — fixed a build failure in `checkDebugDuplicateClasses`: the
+  `graphview` charting library pulls in the legacy
+  `com.android.support:support-compat` artifact, which collides with
+  `androidx.core`. Excluded that transitive dependency from `graphview`.
+  No functional changes.
 
 ## Build
 
