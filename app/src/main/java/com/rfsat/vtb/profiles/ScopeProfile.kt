@@ -3,15 +3,15 @@ package com.rfsat.vtb.profiles
 enum class ClickUnit { MOA_QUARTER, MOA_EIGHTH, MRAD_TENTH }
 
 /**
- * Placeholder scope — replace once the real scope's specs are known.
- * clickUnit determines the turret's angular value per click; the
- * adjustment calculator reports required clicks in this unit.
+ * Default is the Vector Optics Continental 5-30x56 (VCT-34FFP Tactical
+ * MIL / VEC-MBR): 0.1 MRAD/click, 26 MRAD elevation travel, 16 MRAD
+ * windage travel (manufacturer spec). Editable in-app if you swap scopes.
  */
 data class ScopeProfile(
-    val name: String = "Generic 1/4-MOA Scope (placeholder — update with real scope)",
-    val clickUnit: ClickUnit = ClickUnit.MOA_QUARTER,
-    val maxElevationTravelMoa: Double = 60.0,
-    val maxWindageTravelMoa: Double = 60.0
+    val name: String = "Vector Optics Continental 5-30x56 (VCT-34FFP Tactical MIL)",
+    val clickUnit: ClickUnit = ClickUnit.MRAD_TENTH,
+    val maxElevationTravelMoa: Double = 26.0 * 3.43775, // 26 MRAD elevation travel
+    val maxWindageTravelMoa: Double = 16.0 * 3.43775    // 16 MRAD windage travel
 ) {
     /** Angular value of one click, in the scope's own units. */
     val clickValue: Double get() = when (clickUnit) {

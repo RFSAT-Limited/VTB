@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import com.rfsat.vtb.log.Logger
 
 /**
  * Post-processes a recorded clip to pull out the vapor-trail pixel track.
@@ -13,8 +14,13 @@ import android.net.Uri
  * that fixed reference. Works well for a static, tripod-mounted phone;
  * if the camera moves during the shot this will need image stabilisation
  * first (not implemented here).
+ *
+ * Runs ~60 blocking MediaMetadataRetriever seeks per second of clip — this
+ * is CPU/IO heavy and MUST be called from a background thread, never the
+ * UI thread (see CaptureActivity, which dispatches this on Dispatchers.Default).
  */
 object TrailExtractor {
+    private const val TAG = "TrailExtractor"
 
     fun extract(
         context: Context,
@@ -22,17 +28,49 @@ object TrailExtractor {
         shotBreakOffsetS: Double,
         clipDurationAfterShotS: Double = 2.0,
         sampleIntervalMs: Long = 16, // ~60 samples/sec; drop to 33 for 30fps sources
-        brightnessDeltaThreshold: Int = 18
+        brightnessDeltaThreshold: Int = 18,
+        externalReferenceBitmap: Bitmap? = null
     ): List<PixelObservation> {
         val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(context, videoUri)
+        var reference: Bitmap? = null
+        var scaledExternalReference: Bitmap? = null
         try {
-            val referenceUs = ((shotBreakOffsetS - 0.15).coerceAtLeast(0.0) * 1_000_000).toLong()
-            val reference = retriever.getFrameAtTime(referenceUs, MediaMetadataRetriever.OPTION_CLOSEST)
-                ?: return emptyList()
-            val w = reference.width
-            val h = reference.height
-            val refLum = luminance(reference)
+            retriever.setDataSource(context, videoUri)
+
+            val w: Int
+            val h: Int
+            val refLum: DoubleArray
+
+            if (externalReferenceBitmap != null) {
+                // Auto-triggered recordings start right at the shot — there's no
+                // pre-shot footage in the clip to pull a reference frame from, so
+                // one was grabbed from the live preview just before arming
+                // (CaptureActivity). Scale it to match the clip's actual decoded
+                // resolution, which may differ slightly from the preview surface.
+                val probe = retriever.getFrameAtTime((shotBreakOffsetS * 1_000_000).toLong(), MediaMetadataRetriever.OPTION_CLOSEST)
+                if (probe == null) {
+                    Logger.w(TAG, "No frame at all near shot-break time — video too short or unreadable")
+                    return emptyList()
+                }
+                w = probe.width; h = probe.height
+                probe.recycle()
+                scaledExternalReference = Bitmap.createScaledBitmap(externalReferenceBitmap, w, h, true)
+                refLum = luminance(scaledExternalReference)
+                Logger.i(TAG, "Using external pre-arm reference frame, scaled to ${w}x${h}")
+            } else {
+                val referenceUs = ((shotBreakOffsetS - 0.15).coerceAtLeast(0.0) * 1_000_000).toLong()
+                reference = retriever.getFrameAtTime(referenceUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                if (reference == null) {
+                    Logger.w(TAG, "No reference frame at ${referenceUs}us — video too short or unreadable")
+                    return emptyList()
+                }
+                w = reference.width; h = reference.height
+                refLum = luminance(reference)
+                reference.recycle()
+                reference = null
+            }
+
+            Logger.i(TAG, "Reference frame ${w}x${h}, scanning $shotBreakOffsetS..${shotBreakOffsetS + clipDurationAfterShotS}s")
 
             val results = mutableListOf<PixelObservation>()
             var lastX = w / 2.0
@@ -41,38 +79,56 @@ object TrailExtractor {
 
             var tS = shotBreakOffsetS
             val endS = shotBreakOffsetS + clipDurationAfterShotS
+            var framesRead = 0
+            var framesFailed = 0
             while (tS <= endS) {
-                val frame = retriever.getFrameAtTime((tS * 1_000_000).toLong(), MediaMetadataRetriever.OPTION_CLOSEST)
-                if (frame != null && frame.width == w && frame.height == h) {
-                    val lum = luminance(frame)
-                    val x0 = (lastX - searchRadius).toInt().coerceIn(0, w - 1)
-                    val x1 = (lastX + searchRadius).toInt().coerceIn(0, w - 1)
-                    val y0 = (lastY - searchRadius).toInt().coerceIn(0, h - 1)
-                    val y1 = (lastY + searchRadius).toInt().coerceIn(0, h - 1)
+                var frame: Bitmap? = null
+                try {
+                    frame = retriever.getFrameAtTime((tS * 1_000_000).toLong(), MediaMetadataRetriever.OPTION_CLOSEST)
+                    if (frame != null && frame.width == w && frame.height == h) {
+                        framesRead++
+                        val lum = luminance(frame)
+                        val x0 = (lastX - searchRadius).toInt().coerceIn(0, w - 1)
+                        val x1 = (lastX + searchRadius).toInt().coerceIn(0, w - 1)
+                        val y0 = (lastY - searchRadius).toInt().coerceIn(0, h - 1)
+                        val y1 = (lastY + searchRadius).toInt().coerceIn(0, h - 1)
 
-                    var sumW = 0.0; var sumWx = 0.0; var sumWy = 0.0
-                    for (y in y0..y1) {
-                        val rowOff = y * w
-                        for (x in x0..x1) {
-                            val idx = rowOff + x
-                            val delta = lum[idx] - refLum[idx]
-                            if (delta > brightnessDeltaThreshold) {
-                                sumW += delta; sumWx += delta * x; sumWy += delta * y
+                        var sumW = 0.0; var sumWx = 0.0; var sumWy = 0.0
+                        for (y in y0..y1) {
+                            val rowOff = y * w
+                            for (x in x0..x1) {
+                                val idx = rowOff + x
+                                val delta = lum[idx] - refLum[idx]
+                                if (delta > brightnessDeltaThreshold) {
+                                    sumW += delta; sumWx += delta * x; sumWy += delta * y
+                                }
                             }
                         }
+                        if (sumW > 0) {
+                            val px = sumWx / sumW
+                            val py = sumWy / sumW
+                            lastX = px; lastY = py
+                            val confidence = (sumW / (255.0 * (x1 - x0 + 1) * (y1 - y0 + 1))).coerceIn(0.0, 1.0)
+                            results.add(PixelObservation(tS - shotBreakOffsetS, px, py, confidence))
+                        }
                     }
-                    if (sumW > 0) {
-                        val px = sumWx / sumW
-                        val py = sumWy / sumW
-                        lastX = px; lastY = py
-                        val confidence = (sumW / (255.0 * (x1 - x0 + 1) * (y1 - y0 + 1))).coerceIn(0.0, 1.0)
-                        results.add(PixelObservation(tS - shotBreakOffsetS, px, py, confidence))
-                    }
+                } catch (t: Throwable) {
+                    // A single bad seek/decode shouldn't abort the whole analysis.
+                    framesFailed++
+                    Logger.w(TAG, "Frame decode failed at ${tS}s: ${t.javaClass.simpleName}: ${t.message}")
+                } finally {
+                    frame?.recycle()
                 }
                 tS += sampleIntervalMs / 1000.0
             }
+            Logger.i(TAG, "Done: $framesRead frames read, $framesFailed failed, ${results.size} trail points found")
             return results
+        } catch (t: Throwable) {
+            Logger.e(TAG, "Trail extraction failed", t)
+            return emptyList()
         } finally {
+            reference?.recycle()
+            scaledExternalReference?.recycle()
             retriever.release()
         }
     }

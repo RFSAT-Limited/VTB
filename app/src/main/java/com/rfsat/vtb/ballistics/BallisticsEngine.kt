@@ -159,4 +159,16 @@ object BallisticsEngine {
         }
         return (lo + hi) / 2
     }
+
+    /**
+     * Zero-wind estimate of time-of-flight to [targetDistanceM] — used to
+     * size the auto-trigger recording window (see [com.rfsat.vtb.capture.ShotDetector]).
+     * Pitch doesn't matter much for this estimate (a few degrees of elevation
+     * barely changes forward velocity decay), so a flat (0 rad) shot is fine.
+     */
+    fun timeOfFlight(bullet: BulletProfile, atmosphere: Atmosphere, targetDistanceM: Double): Double {
+        val traj = simulate(bullet, atmosphere, 0.0, 0.0, targetDistanceM + 1.0)
+        val atTarget = traj.lastOrNull { it.position.x <= targetDistanceM } ?: traj.last()
+        return atTarget.timeS
+    }
 }

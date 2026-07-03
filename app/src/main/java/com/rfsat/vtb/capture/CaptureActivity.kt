@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
@@ -13,20 +14,26 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.rfsat.vtb.ballistics.Atmosphere
+import com.rfsat.vtb.ballistics.BallisticsEngine
 import com.rfsat.vtb.databinding.ActivityCaptureBinding
+import com.rfsat.vtb.log.Logger
 import com.rfsat.vtb.profiles.ProfileRepository
+import com.rfsat.vtb.profiles.RifleProfile
 import com.rfsat.vtb.results.AdjustmentCalculator
 import com.rfsat.vtb.results.AnalysisSession
 import com.rfsat.vtb.results.ResultsActivity
 import com.rfsat.vtb.wind.WindEstimator
-import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CaptureActivity : AppCompatActivity() {
 
@@ -34,15 +41,47 @@ class CaptureActivity : AppCompatActivity() {
     private lateinit var repo: ProfileRepository
     private var videoCapture: VideoCapture<Recorder>? = null
     private var recording: Recording? = null
-    private var outputFile: File? = null
+    private var pendingUri: Uri? = null // set by the recorder, the video-import picker, or an auto-trigger
 
-    private var boresightX = 0.5 // normalized 0..1, defaults to frame center
-    private var boresightY = 0.5
+    private var rifle: RifleProfile = RifleProfile.DEFAULT
+    private val nudgeStep = 0.005 // normalized frame fraction per tap
 
-    private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startCamera() else {
+    private var audioPermissionGranted = false
+    private var shotDetector: ShotDetector? = null
+    private var isArmed = false
+    /** Reference (background) frame grabbed from the live preview at arm-time —
+     *  needed because an auto-triggered recording starts right at the shot,
+     *  leaving no pre-shot footage in the clip itself to pull one from. */
+    private var pendingReferenceBitmap: Bitmap? = null
+    private var autoStopJob: kotlinx.coroutines.Job? = null
+
+    companion object {
+        private const val TAG = "CaptureActivity"
+        // Rough budget for mic-buffer read latency + detection loop polling +
+        // CameraX recorder startup — the trail's first fraction of a second
+        // may already be gone by the time frames actually start landing.
+        // See ShotDetector's doc comment for the full caveat.
+        private const val AUTO_TRIGGER_LATENCY_S = 0.12
+    }
+
+    private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+        if (results[Manifest.permission.CAMERA] == true) startCamera() else {
             Toast.makeText(this, "Camera permission is required to capture the trail.", Toast.LENGTH_LONG).show()
             finish()
+        }
+        audioPermissionGranted = results[Manifest.permission.RECORD_AUDIO] == true
+        if (!audioPermissionGranted) {
+            Logger.w(TAG, "RECORD_AUDIO not granted — Arm (Auto-Trigger) will be unavailable")
+        }
+    }
+
+    private val importVideoLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            pendingUri = uri
+            pendingReferenceBitmap = null // imported clips use TrailExtractor's internal reference-frame lookup
+            binding.btnAnalyze.isEnabled = true
+            Logger.i(TAG, "Imported video: $uri")
+            Toast.makeText(this, "Video imported — ready to analyze.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -51,23 +90,50 @@ class CaptureActivity : AppCompatActivity() {
         binding = ActivityCaptureBinding.inflate(layoutInflater)
         setContentView(binding.root)
         repo = ProfileRepository(this)
+        rifle = repo.getRifle()
 
-        binding.previewView.setOnTouchListener { view, event ->
-            boresightX = (event.x / view.width).coerceIn(0f, 1f).toDouble()
-            boresightY = (event.y / view.height).coerceIn(0f, 1f).toDouble()
-            Toast.makeText(this, "Point of aim marked", Toast.LENGTH_SHORT).show()
-            true
-        }
+        binding.crosshair.offsetXNorm = rifle.boresightOffsetXNorm
+        binding.crosshair.offsetYNorm = rifle.boresightOffsetYNorm
+
+        binding.btnNudgeLeft.setOnClickListener { nudgeBoresight(-nudgeStep, 0.0) }
+        binding.btnNudgeRight.setOnClickListener { nudgeBoresight(nudgeStep, 0.0) }
+        binding.btnNudgeUp.setOnClickListener { nudgeBoresight(0.0, -nudgeStep) }
+        binding.btnNudgeDown.setOnClickListener { nudgeBoresight(0.0, nudgeStep) }
+        binding.btnNudgeReset.setOnClickListener { setBoresight(0.0, 0.0) }
 
         binding.btnRecord.setOnClickListener { toggleRecording() }
+        binding.btnImportVideo.setOnClickListener { importVideoLauncher.launch("video/*") }
         binding.btnAnalyze.setOnClickListener { runAnalysis() }
         binding.btnAnalyze.isEnabled = false
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            startCamera()
-        } else {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
-        }
+        binding.btnArm.setOnClickListener { toggleArm() }
+        binding.etSensitivity.setText("70")
+
+        val cameraGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        audioPermissionGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (cameraGranted) startCamera()
+        val toRequest = mutableListOf<String>()
+        if (!cameraGranted) toRequest.add(Manifest.permission.CAMERA)
+        if (!audioPermissionGranted) toRequest.add(Manifest.permission.RECORD_AUDIO)
+        if (toRequest.isNotEmpty()) permissionLauncher.launch(toRequest.toTypedArray())
+    }
+
+    override fun onDestroy() {
+        shotDetector?.stop()
+        autoStopJob?.cancel()
+        super.onDestroy()
+    }
+
+    private fun nudgeBoresight(dx: Double, dy: Double) =
+        setBoresight(binding.crosshair.offsetXNorm + dx, binding.crosshair.offsetYNorm + dy)
+
+    private fun setBoresight(x: Double, y: Double) {
+        val clampedX = x.coerceIn(-0.45, 0.45)
+        val clampedY = y.coerceIn(-0.45, 0.45)
+        binding.crosshair.offsetXNorm = clampedX
+        binding.crosshair.offsetYNorm = clampedY
+        rifle = rifle.copy(boresightOffsetXNorm = clampedX, boresightOffsetYNorm = clampedY)
+        repo.saveRifle(rifle)
     }
 
     private fun startCamera() {
@@ -86,7 +152,10 @@ class CaptureActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    // ---- Manual record/stop (unchanged flow) ----
+
     private fun toggleRecording() {
+        if (isArmed) disarm() // manual record overrides an armed auto-trigger
         val capture = videoCapture ?: return
         val active = recording
         if (active != null) {
@@ -96,7 +165,11 @@ class CaptureActivity : AppCompatActivity() {
             binding.btnAnalyze.isEnabled = true
             return
         }
+        startRecordingInternal { binding.btnRecord.text = getString(com.rfsat.vtb.R.string.stop) }
+    }
 
+    private fun startRecordingInternal(onStarted: () -> Unit) {
+        val capture = videoCapture ?: return
         val name = "vapor_trail_${System.currentTimeMillis()}.mp4"
         val contentValues = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, name)
@@ -109,67 +182,187 @@ class CaptureActivity : AppCompatActivity() {
         recording = capture.output.prepareRecording(this, outputOptions)
             .start(ContextCompat.getMainExecutor(this)) { event ->
                 if (event is VideoRecordEvent.Finalize) {
-                    lastRecordedUri = event.outputResults.outputUri
+                    pendingUri = event.outputResults.outputUri
+                    Logger.i(TAG, "Recording finalized: ${pendingUri}")
                 }
             }
-        binding.btnRecord.text = getString(com.rfsat.vtb.R.string.stop)
+        onStarted()
     }
 
-    private var lastRecordedUri: Uri? = null
+    // ---- Arm / auto-trigger-on-shot ----
 
+    private fun toggleArm() {
+        if (isArmed) { disarm(); return }
+        if (!audioPermissionGranted) {
+            Toast.makeText(this, "Microphone permission is required for auto-trigger.", Toast.LENGTH_LONG).show()
+            permissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+            return
+        }
+        if (videoCapture == null) {
+            Toast.makeText(this, "Camera isn't ready yet.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val previewBitmap = binding.previewView.bitmap
+        if (previewBitmap == null) {
+            Toast.makeText(this, "Preview isn't ready yet — try again in a moment.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        pendingReferenceBitmap = previewBitmap
+        isArmed = true
+        binding.btnArm.text = "Disarm"
+        binding.tvArmStatus.text = "Listening for shot…"
+        binding.btnRecord.isEnabled = false
+
+        val sensitivity = binding.etSensitivity.text.toString().toIntOrNull() ?: 70
+        shotDetector = ShotDetector { onShotDetected() }.also { it.start(sensitivity) }
+        Logger.i(TAG, "Armed — listening for shot (sensitivity=$sensitivity)")
+    }
+
+    private fun disarm() {
+        shotDetector?.stop()
+        shotDetector = null
+        isArmed = false
+        binding.btnArm.text = "Arm (Auto-Trigger)"
+        binding.tvArmStatus.text = ""
+        binding.btnRecord.isEnabled = true
+    }
+
+    private fun onShotDetected() {
+        if (!isArmed) return // already handled / disarmed concurrently
+        shotDetector?.stop()
+        shotDetector = null
+        binding.tvArmStatus.text = "Shot detected — recording…"
+        Logger.i(TAG, "Shot detected — starting recording")
+
+        // Pre-fill shot-break offset with the assumed detection-to-frames latency,
+        // since the clip itself starts essentially at the shot.
+        binding.etShotBreakSeconds.setText(AUTO_TRIGGER_LATENCY_S.toString())
+
+        startRecordingInternal {
+            binding.btnRecord.text = getString(com.rfsat.vtb.R.string.stop)
+            binding.btnArm.text = "Arm (Auto-Trigger)"
+
+            // Duration = expected time-of-flight to the target, plus margin
+            // for wind-lengthened flight and trailing smoke dispersal.
+            val bullet = repo.getBullet()
+            val targetDistanceYd = binding.etTargetDistance.text.toString().toDoubleOrNull() ?: 100.0
+            val targetDistanceM = targetDistanceYd * 0.9144
+            val tof = BallisticsEngine.timeOfFlight(bullet, Atmosphere(), targetDistanceM)
+            val durationS = (tof * 1.15 + AUTO_TRIGGER_LATENCY_S).coerceAtLeast(tof + 0.3)
+            Logger.i(TAG, "Auto-stop scheduled: est. time-of-flight=${tof}s -> recording for ${durationS}s")
+            binding.tvArmStatus.text = "Recording (~${"%.1f".format(durationS)}s)…"
+
+            autoStopJob = lifecycleScope.launch {
+                delay((durationS * 1000).toLong())
+                val active = recording
+                if (active != null) {
+                    active.stop()
+                    recording = null
+                    binding.btnRecord.text = getString(com.rfsat.vtb.R.string.record)
+                    binding.btnAnalyze.isEnabled = true
+                    binding.tvArmStatus.text = "Recording complete — ready to analyze."
+                    Logger.i(TAG, "Auto-stop fired")
+                }
+                isArmed = false
+                binding.btnRecord.isEnabled = true
+            }
+        }
+    }
+
+    /**
+     * The full pipeline (video decode + physics simulation) is CPU/IO heavy
+     * — running it on the UI thread was the cause of the reported crash
+     * (an ANR under the hood). Everything below runs on Dispatchers.Default;
+     * only the final activity launch hops back to the main thread.
+     */
     private fun runAnalysis() {
-        val uri = lastRecordedUri
+        val uri = pendingUri
         if (uri == null) {
-            Toast.makeText(this, "No recording found yet.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "No video available yet — record or import one first.", Toast.LENGTH_SHORT).show()
             return
         }
         val shotBreakOffsetS = binding.etShotBreakSeconds.text.toString().toDoubleOrNull() ?: 0.5
         val targetDistanceYd = binding.etTargetDistance.text.toString().toDoubleOrNull() ?: 100.0
         val fovDeg = binding.etHorizontalFov.text.toString().toDoubleOrNull() ?: 60.0
+        val referenceBitmap = pendingReferenceBitmap
 
-        val bullet = repo.getBullet()
-        val rifle = repo.getRifle()
-        val scope = repo.getScope()
-        val atmosphere = Atmosphere() // TODO: wire up a range-conditions input screen
+        setUiBusy(true)
 
-        // Frame size isn't known until we read one frame back; TrailExtractor
-        // returns pixel coords in the actual decoded frame's resolution, and
-        // we mark the boresight in normalized preview coordinates, so scale
-        // once we have a reference frame. For simplicity here we assume the
-        // recorded video resolution matches the preview aspect ratio.
-        val observations = TrailExtractor.extract(this, uri, shotBreakOffsetS)
-        if (observations.isEmpty()) {
-            Toast.makeText(this, "No trail detected — check lighting/contrast and try again.", Toast.LENGTH_LONG).show()
-            return
+        lifecycleScope.launch(Dispatchers.Default) {
+            try {
+                Logger.i(TAG, "Analysis starting: uri=$uri shotBreak=${shotBreakOffsetS}s target=${targetDistanceYd}yd fov=${fovDeg}deg externalRef=${referenceBitmap != null}")
+
+                val bullet = repo.getBullet()
+                val activeRifle = repo.getRifle()
+                val scope = repo.getScope()
+                val atmosphere = Atmosphere() // TODO: wire up a range-conditions input screen
+
+                val observations = TrailExtractor.extract(
+                    this@CaptureActivity, uri, shotBreakOffsetS, externalReferenceBitmap = referenceBitmap
+                )
+                if (observations.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        setUiBusy(false)
+                        Toast.makeText(this@CaptureActivity, "No trail detected — check lighting/contrast and try again.", Toast.LENGTH_LONG).show()
+                    }
+                    return@launch
+                }
+
+                // Frame size isn't known until a frame is decoded; TrailExtractor
+                // returns pixel coords in the actual decoded frame's resolution, and
+                // the boresight was marked in normalized preview coordinates, so we
+                // scale using the preview view's size. This assumes the recorded/
+                // imported video shares the preview's aspect ratio — true for
+                // MediaStore captures on most phones; may need adjusting for
+                // arbitrary imported test clips of a different aspect ratio.
+                val frameWidthPx = withContext(Dispatchers.Main) { binding.previewView.width }
+                val frameHeightPx = withContext(Dispatchers.Main) { binding.previewView.height }
+                val boresightXNorm = 0.5 + activeRifle.boresightOffsetXNorm
+                val boresightYNorm = 0.5 + activeRifle.boresightOffsetYNorm
+
+                val calibration = TrailCalibration(
+                    horizontalFovDeg = fovDeg,
+                    frameWidthPx = frameWidthPx,
+                    frameHeightPx = frameHeightPx,
+                    boresightPixelX = boresightXNorm * frameWidthPx,
+                    boresightPixelY = boresightYNorm * frameHeightPx
+                )
+
+                val targetDistanceM = targetDistanceYd * 0.9144
+                val trailSamples = TrailSampleBuilder.build(observations, calibration, bullet, atmosphere, targetDistanceM + 5.0)
+                Logger.i(TAG, "Built ${trailSamples.size} trail samples")
+
+                val windSamples = WindEstimator.estimate(bullet, atmosphere, trailSamples)
+                Logger.i(TAG, "Estimated ${windSamples.size} wind samples")
+
+                val adjustment = AdjustmentCalculator.computeAdjustment(
+                    bullet, activeRifle, scope, atmosphere, targetDistanceYd, windSamples
+                )
+                Logger.i(TAG, "Adjustment: windage=${adjustment.windageMoa} elevation=${adjustment.elevationMoa}")
+
+                AnalysisSession.windSamples = windSamples
+                AnalysisSession.adjustment = adjustment
+                AnalysisSession.targetDistanceYd = targetDistanceYd
+
+                withContext(Dispatchers.Main) {
+                    setUiBusy(false)
+                    startActivity(Intent(this@CaptureActivity, ResultsActivity::class.java))
+                }
+            } catch (t: Throwable) {
+                Logger.e(TAG, "Analysis failed", t)
+                withContext(Dispatchers.Main) {
+                    setUiBusy(false)
+                    Toast.makeText(this@CaptureActivity, "Analysis failed: ${t.message}. See the Log tab for details.", Toast.LENGTH_LONG).show()
+                }
+            }
         }
+    }
 
-        // Recover the actual decoded frame resolution from the retriever indirectly:
-        // TrailExtractor doesn't expose it, so we approximate using the preview view
-        // size, which is acceptable since MediaStore video capture on most phones
-        // preserves the sensor aspect ratio shown in the preview.
-        val frameWidthPx = binding.previewView.width
-        val frameHeightPx = binding.previewView.height
-
-        val calibration = TrailCalibration(
-            horizontalFovDeg = fovDeg,
-            frameWidthPx = frameWidthPx,
-            frameHeightPx = frameHeightPx,
-            boresightPixelX = boresightX * frameWidthPx,
-            boresightPixelY = boresightY * frameHeightPx
-        )
-
-        val targetDistanceM = targetDistanceYd * 0.9144
-        val trailSamples = TrailSampleBuilder.build(observations, calibration, bullet, atmosphere, targetDistanceM + 5.0)
-        val windSamples = WindEstimator.estimate(bullet, atmosphere, trailSamples)
-
-        val adjustment = AdjustmentCalculator.computeAdjustment(
-            bullet, rifle, scope, atmosphere, targetDistanceYd, windSamples
-        )
-
-        AnalysisSession.windSamples = windSamples
-        AnalysisSession.adjustment = adjustment
-        AnalysisSession.targetDistanceYd = targetDistanceYd
-
-        startActivity(Intent(this, ResultsActivity::class.java))
+    private fun setUiBusy(busy: Boolean) {
+        binding.btnAnalyze.isEnabled = !busy && pendingUri != null
+        binding.btnRecord.isEnabled = !busy
+        binding.btnImportVideo.isEnabled = !busy
+        binding.btnArm.isEnabled = !busy
+        binding.progressAnalyzing.visibility = if (busy) android.view.View.VISIBLE else android.view.View.GONE
     }
 }
