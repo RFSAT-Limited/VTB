@@ -94,6 +94,10 @@ increments on corrections/fixes with no new capability. Shown as
   extraction, wind inversion, scope adjustment.
 - **v1.1** — renamed project to VTB / app to "Vapor-Trail Ballistic
   Calculator" (package `com.rfsat.vtb`); no functional changes.
+- **v1.2** — fixed CI workflow: GitHub Actions doesn't allow the `secrets`
+  context directly inside a step's `if:` condition ("Unrecognized
+  named-value: 'secrets'"). Routed the keystore check through a job-level
+  `env` var instead. No app code changes.
 
 ## Build
 
