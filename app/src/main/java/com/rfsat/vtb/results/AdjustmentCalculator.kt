@@ -76,7 +76,12 @@ object AdjustmentCalculator {
         val pitch = BallisticsEngine.solveZeroPitch(bullet, atmosphere, zeroDistanceM, sightHeightM)
         val uniformWind = Vec3(0.0, vertMps, crossMps)
 
-        val traj = BallisticsEngine.simulate(bullet, atmosphere, pitch, 0.0, targetDistanceM + 1.0) { _, _ -> uniformWind }
+        // NOTE: wind must be a NAMED argument — it is not the last parameter
+        // of simulate() (sampleEveryS is), so a trailing lambda mis-binds.
+        val traj = BallisticsEngine.simulate(
+            bullet, atmosphere, pitch, 0.0, targetDistanceM + 1.0,
+            wind = { _, _ -> uniformWind }
+        )
         val atTarget = traj.lastOrNull { it.position.x <= targetDistanceM } ?: traj.last()
         if (atTarget.position.x < targetDistanceM * 0.95) {
             warnings.add("Simulated trajectory fell short of the target distance — check bullet profile.")
