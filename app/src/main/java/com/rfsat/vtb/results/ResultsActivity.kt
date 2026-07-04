@@ -2,8 +2,6 @@ package com.rfsat.vtb.results
 
 import android.os.Bundle
 import com.rfsat.vtb.ui.BaseActivity
-import com.jjoe64.graphview.series.DataPoint
-import com.jjoe64.graphview.series.LineGraphSeries
 import com.rfsat.vtb.databinding.ActivityResultsBinding
 
 class ResultsActivity : BaseActivity() {
@@ -35,14 +33,9 @@ class ResultsActivity : BaseActivity() {
                 "${String.format("%.1f", adjustment.impactOffsetInAtTarget.y)} in vertical")
         }
 
-        try {
-        val series = LineGraphSeries(
-            AnalysisSession.windSamples.map { DataPoint(it.timeS, it.crosswindMps * 2.23694 /* mph */) }.toTypedArray()
+        binding.windChart.setSeries(
+            AnalysisSession.windSamples.map { it.timeS to it.crosswindMps * 2.23694 /* mph */ }
         )
-        binding.windChart.addSeries(series)
         binding.windChart.title = "Estimated crosswind vs. time-of-flight (mph, +right)"
-        } catch (t: Throwable) {
-            com.rfsat.vtb.log.Logger.e("ResultsActivity", "Chart rendering failed", t)
-        }
     }
 }
