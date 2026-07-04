@@ -11,8 +11,8 @@ android {
         applicationId = "com.rfsat.vtb"
         minSdk = 26
         targetSdk = 34
-        versionCode = 16
-        versionName = "9.2"
+        versionCode = 17
+        versionName = "10.0"
     }
 
     signingConfigs {

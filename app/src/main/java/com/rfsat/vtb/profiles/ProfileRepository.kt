@@ -58,10 +58,18 @@ class ProfileRepository(context: Context) {
             parsed.name.contains("placeholder", ignoreCase = true) ||
             (parsed.clickUnit as ClickUnit?) == null ||
             parsed.zoomMax <= 0.0 || parsed.heightAboveBarrelIn <= 0.0
-        return if (stale) {
+        if (stale) {
             saveScope(ScopeProfile.DEFAULT)
-            ScopeProfile.DEFAULT
-        } else parsed
+            return ScopeProfile.DEFAULT
+        }
+        // MIGRATION (v10.0): type ID dropped from the default scope's name —
+        // rename saved copies so the preset spinner still matches them.
+        if (parsed.name.contains("VCT-34FFP")) {
+            val renamed = parsed.copy(name = ScopeProfile.DEFAULT.name)
+            saveScope(renamed)
+            return renamed
+        }
+        return parsed
     }
 
     fun saveScope(profile: ScopeProfile) {

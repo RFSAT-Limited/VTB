@@ -11,7 +11,7 @@ enum class ClickUnit { MOA_QUARTER, MOA_EIGHTH, MRAD_TENTH }
  * (manufacturer spec).
  */
 data class ScopeProfile(
-    val name: String = "Vector Optics Continental 5-30x56 (VCT-34FFP Tactical MIL)",
+    val name: String = "Vector Optics Continental 5-30x56",
     val clickUnit: ClickUnit = ClickUnit.MRAD_TENTH,
     val maxElevationTravelMoa: Double = 26.0 * 3.43775,
     val maxWindageTravelMoa: Double = 16.0 * 3.43775,

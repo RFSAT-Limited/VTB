@@ -41,6 +41,7 @@
             android:layout_height="wrap_content"
             android:textSize="14sp"
             android:lineSpacingExtra="4dp"
+            android:justificationMode="inter_word"
             android:text="@string/about_app_description"
             android:layout_marginBottom="24dp" />
 
@@ -57,6 +58,7 @@
             android:layout_height="wrap_content"
             android:textSize="14sp"
             android:lineSpacingExtra="4dp"
+            android:justificationMode="inter_word"
             android:text="@string/about_developer_description" />
 
     </LinearLayout>

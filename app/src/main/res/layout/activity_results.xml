@@ -1,103 +1,147 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Fixed (non-scrolling) screen: corrections dominate, compact one-line
+     detail rows, chart absorbs ALL remaining space so nothing is wasted. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <ScrollView
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp">
 
+        <!-- Correction readouts: auto-sized to fill the width -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
+            android:orientation="horizontal">
 
-            <!-- Large correction readouts: arrow + value dominate the screen -->
             <LinearLayout
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
+                android:layout_weight="1"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:layout_marginEnd="6dp"
+                android:orientation="vertical"
+                android:gravity="center_horizontal">
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="center_horizontal">
+                    android:text="WINDAGE"
+                    android:textSize="13sp"
+                    android:letterSpacing="0.15" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="WINDAGE"
-                        android:textSize="13sp"
-                        android:letterSpacing="0.15" />
+                <TextView
+                    android:id="@+id/tvWindageBig"
+                    android:layout_width="match_parent"
+                    android:layout_height="86dp"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:textStyle="bold"
+                    android:textColor="?attr/colorAccent"
+                    android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="24sp"
+                    android:autoSizeMaxTextSize="80sp" />
 
-                    <TextView
-                        android:id="@+id/tvWindageBig"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="44sp"
-                        android:textStyle="bold"
-                        android:textColor="?attr/colorAccent" />
-
-                    <TextView
-                        android:id="@+id/tvWindageDetail"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="14sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
+                <TextView
+                    android:id="@+id/tvWindageDetail"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:gravity="center_horizontal">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="ELEVATION"
-                        android:textSize="13sp"
-                        android:letterSpacing="0.15" />
-
-                    <TextView
-                        android:id="@+id/tvElevationBig"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="44sp"
-                        android:textStyle="bold"
-                        android:textColor="?attr/colorAccent" />
-
-                    <TextView
-                        android:id="@+id/tvElevationDetail"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textSize="14sp" />
-                </LinearLayout>
+                    android:maxLines="1"
+                    android:textSize="14sp" />
             </LinearLayout>
 
-            <!-- Supporting details + any warnings -->
-            <TextView
-                android:id="@+id/tvAdjustmentSummary"
-                android:layout_width="match_parent"
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:textSize="13sp"
-                android:fontFamily="monospace" />
+                android:layout_marginStart="6dp"
+                android:orientation="vertical"
+                android:gravity="center_horizontal">
 
-            <!-- Chart demoted to a fixed-height strip under the numbers -->
-            <com.rfsat.vtb.ui.WindChartView
-                android:id="@+id/windChart"
-                android:layout_width="match_parent"
-                android:layout_height="170dp"
-                android:layout_marginTop="12dp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ELEVATION"
+                    android:textSize="13sp"
+                    android:letterSpacing="0.15" />
 
+                <TextView
+                    android:id="@+id/tvElevationBig"
+                    android:layout_width="match_parent"
+                    android:layout_height="86dp"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:textStyle="bold"
+                    android:textColor="?attr/colorAccent"
+                    android:autoSizeTextType="uniform"
+                    android:autoSizeMinTextSize="24sp"
+                    android:autoSizeMaxTextSize="80sp" />
+
+                <TextView
+                    android:id="@+id/tvElevationDetail"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:textSize="14sp" />
+            </LinearLayout>
         </LinearLayout>
-    </ScrollView>
+
+        <!-- Compact one-line detail rows (auto-shrink to always fit) -->
+        <TextView
+            android:id="@+id/tvRowTarget"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:maxLines="1"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="9sp"
+            android:autoSizeMaxTextSize="14sp"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/tvRowWind"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="9sp"
+            android:autoSizeMaxTextSize="14sp"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/tvRowImpact"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="9sp"
+            android:autoSizeMaxTextSize="14sp"
+            android:fontFamily="monospace" />
+
+        <TextView
+            android:id="@+id/tvWarnings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <!-- Chart takes every remaining pixel -->
+        <com.rfsat.vtb.ui.WindChartView
+            android:id="@+id/windChart"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="6dp" />
+
+    </LinearLayout>
 
     <include layout="@layout/include_bottom_nav" />
 </LinearLayout>

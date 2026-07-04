@@ -22,6 +22,23 @@ open class BaseActivity : AppCompatActivity() {
         findViewById<android.view.View>(R.id.btnExit)?.setOnClickListener {
             finishAffinity() // close the whole task, not just this screen
         }
+        // Results also lives outside the capped menu; tint it like a selected
+        // nav item when the Results screen is active.
+        findViewById<android.view.View>(R.id.btnResults)?.setOnClickListener {
+            if (selectedItemId != R.id.nav_results) {
+                startActivity(Intent(this, com.rfsat.vtb.results.ResultsActivity::class.java))
+                if (this !is MainActivity) finish()
+            }
+        }
+        findViewById<android.widget.ImageView>(R.id.ivResults)?.let { iv ->
+            if (selectedItemId == R.id.nav_results) {
+                val tv = android.util.TypedValue()
+                theme.resolveAttribute(com.google.android.material.R.attr.colorAccent, tv, true)
+                iv.imageTintList = android.content.res.ColorStateList.valueOf(
+                    if (tv.resourceId != 0) getColor(tv.resourceId) else tv.data
+                )
+            }
+        }
         val nav = findViewById<BottomNavigationView>(R.id.bottomNav) ?: return
         nav.selectedItemId = selectedItemId // set BEFORE the listener to avoid a callback loop
         nav.setOnItemSelectedListener { item ->

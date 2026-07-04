@@ -21,6 +21,24 @@
         app:menu="@menu/bottom_nav_menu" />
 
     <LinearLayout
+        android:id="@+id/btnResults"
+        android:layout_width="56dp"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/nav_results">
+
+        <ImageView
+            android:id="@+id/ivResults"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_nav_results"
+            app:tint="?android:attr/textColorPrimary"
+            android:importantForAccessibility="no" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/btnExit"
         android:layout_width="56dp"
         android:layout_height="match_parent"
