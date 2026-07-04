@@ -171,4 +171,24 @@ object BallisticsEngine {
         val atTarget = traj.lastOrNull { it.position.x <= targetDistanceM } ?: traj.last()
         return atTarget.timeS
     }
+
+    /**
+     * Time-of-flight along the ZEROED trajectory: solves the launch pitch
+     * implied by the scope's zero distance and sight height, then integrates
+     * with that pitch. The pitch effect on TOF is small at rimfire ranges,
+     * but this keeps the capture-timing and settle-time estimates consistent
+     * with the same zero calibration the correction solver uses.
+     */
+    fun zeroedTimeOfFlight(
+        bullet: BulletProfile,
+        atmosphere: Atmosphere,
+        targetDistanceM: Double,
+        zeroDistanceM: Double,
+        sightHeightM: Double
+    ): Double {
+        val pitch = solveZeroPitch(bullet, atmosphere, zeroDistanceM, sightHeightM)
+        val traj = simulate(bullet, atmosphere, pitch, 0.0, targetDistanceM + 1.0)
+        val atTarget = traj.lastOrNull { it.position.x <= targetDistanceM } ?: traj.last()
+        return atTarget.timeS
+    }
 }

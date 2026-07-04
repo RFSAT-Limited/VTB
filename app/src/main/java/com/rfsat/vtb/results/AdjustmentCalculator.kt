@@ -70,10 +70,8 @@ object AdjustmentCalculator {
         }
 
         val targetDistanceM = targetDistanceYd * 0.9144
-        // The scope profile owns the optical-centerline height now; fall back
-        // to the rifle's legacy sightHeightIn if a profile predates the field.
-        val sightHeightM = (if (scope.heightAboveBarrelIn > 0) scope.heightAboveBarrelIn else rifle.sightHeightIn) * 0.0254
-        val zeroDistanceM = rifle.zeroDistanceYards * 0.9144
+        val sightHeightM = effectiveSightHeightM(rifle, scope)
+        val zeroDistanceM = rifle.zeroDistanceM
 
         val pitch = BallisticsEngine.solveZeroPitch(bullet, atmosphere, zeroDistanceM, sightHeightM)
         val uniformWind = Vec3(0.0, vertMps, crossMps)
@@ -133,6 +131,11 @@ object AdjustmentCalculator {
             warnings = warnings
         )
     }
+
+    /** The scope profile owns the optical-centerline height; fall back to
+     *  the rifle's legacy sightHeightIn if a profile predates the field. */
+    fun effectiveSightHeightM(rifle: RifleProfile, scope: ScopeProfile): Double =
+        (if (scope.heightAboveBarrelIn > 0) scope.heightAboveBarrelIn else rifle.sightHeightIn) * 0.0254
 
     private fun radToMoa(rad: Double) = Math.toDegrees(rad) * 60.0
     private fun fmt(v: Double) = String.format("%.1f", v)

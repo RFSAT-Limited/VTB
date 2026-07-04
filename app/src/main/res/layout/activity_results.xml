@@ -2,22 +2,102 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="20dp">
+    android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/tvAdjustmentSummary"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textSize="16sp"
-        android:fontFamily="monospace" />
-
-    <com.rfsat.vtb.ui.WindChartView
-        android:id="@+id/windChart"
+    <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="16dp" />
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Large correction readouts: arrow + value dominate the screen -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="WINDAGE"
+                        android:textSize="13sp"
+                        android:letterSpacing="0.15" />
+
+                    <TextView
+                        android:id="@+id/tvWindageBig"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="44sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorAccent" />
+
+                    <TextView
+                        android:id="@+id/tvWindageDetail"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:gravity="center_horizontal">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ELEVATION"
+                        android:textSize="13sp"
+                        android:letterSpacing="0.15" />
+
+                    <TextView
+                        android:id="@+id/tvElevationBig"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="44sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorAccent" />
+
+                    <TextView
+                        android:id="@+id/tvElevationDetail"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="14sp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Supporting details + any warnings -->
+            <TextView
+                android:id="@+id/tvAdjustmentSummary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:textSize="13sp"
+                android:fontFamily="monospace" />
+
+            <!-- Chart demoted to a fixed-height strip under the numbers -->
+            <com.rfsat.vtb.ui.WindChartView
+                android:id="@+id/windChart"
+                android:layout_width="match_parent"
+                android:layout_height="170dp"
+                android:layout_marginTop="12dp" />
+
+        </LinearLayout>
+    </ScrollView>
 
     <include layout="@layout/include_bottom_nav" />
 </LinearLayout>

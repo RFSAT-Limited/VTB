@@ -249,8 +249,14 @@ class CaptureActivity : BaseActivity() {
             // Duration = expected time-of-flight to the target, plus margin
             // for wind-lengthened flight and trailing smoke dispersal.
             val bullet = repo.getBullet()
+            val zeroRifle = repo.getRifle()
+            val zeroScope = repo.getScope()
             val targetDistanceM = readTargetDistanceMeters()
-            val tof = BallisticsEngine.timeOfFlight(bullet, Atmosphere(), targetDistanceM)
+            val tof = BallisticsEngine.zeroedTimeOfFlight(
+                bullet, Atmosphere(), targetDistanceM,
+                zeroRifle.zeroDistanceM,
+                com.rfsat.vtb.results.AdjustmentCalculator.effectiveSightHeightM(zeroRifle, zeroScope)
+            )
             val durationS = (tof * 1.15 + AUTO_TRIGGER_LATENCY_S).coerceAtLeast(tof + 0.3)
             Logger.i(TAG, "Auto-stop scheduled: est. time-of-flight=${tof}s -> recording for ${durationS}s")
             binding.tvArmStatus.text = "Recording (~${"%.1f".format(durationS)}s)…"
@@ -345,8 +351,14 @@ class CaptureActivity : BaseActivity() {
 
                 val targetDistanceM = targetDistanceYd * 0.9144
                 // Trail drift only measures wind AFTER the bullet has passed;
-                // during flight the centroid motion is trail formation.
-                val tofS = BallisticsEngine.timeOfFlight(bullet, atmosphere, targetDistanceM)
+                // during flight the centroid motion is trail formation. TOF is
+                // taken along the ZEROED trajectory so the settle window stays
+                // consistent with the zero calibration used by the solver.
+                val tofS = BallisticsEngine.zeroedTimeOfFlight(
+                    bullet, atmosphere, targetDistanceM,
+                    activeRifle.zeroDistanceM,
+                    AdjustmentCalculator.effectiveSightHeightM(activeRifle, scope)
+                )
                 val windSamples = WindEstimator.estimate(
                     calibration, observations, targetDistanceM, settleTimeS = tofS * 1.2
                 )

@@ -20,7 +20,7 @@
         <EditText android:id="@+id/etRifleName" android:hint="Rifle name" android:layout_width="match_parent" android:layout_height="wrap_content"/>
         <EditText android:id="@+id/etBarrelLength" android:hint="Barrel length (in)" android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
         <EditText android:id="@+id/etTwistRate" android:hint="Twist rate (in per turn)" android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-        <EditText android:id="@+id/etZeroDistance" android:hint="Zero distance (yd)" android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <EditText android:id="@+id/etZeroDistance" android:hint="Zero distance" android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
 
         <TextView android:text="@string/bullet_profile" android:textStyle="bold" android:textSize="18sp"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:layout_marginBottom="8dp"/>

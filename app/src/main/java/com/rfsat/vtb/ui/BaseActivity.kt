@@ -17,6 +17,11 @@ open class BaseActivity : AppCompatActivity() {
      * one. Call after setContentView with this screen's own nav item id.
      */
     protected fun setupBottomNav(selectedItemId: Int) {
+        // Exit lives OUTSIDE the BottomNavigationView because Material caps
+        // its menu at 5 items (a 6th throws at inflate time).
+        findViewById<android.view.View>(R.id.btnExit)?.setOnClickListener {
+            finishAffinity() // close the whole task, not just this screen
+        }
         val nav = findViewById<BottomNavigationView>(R.id.bottomNav) ?: return
         nav.selectedItemId = selectedItemId // set BEFORE the listener to avoid a callback loop
         nav.setOnItemSelectedListener { item ->

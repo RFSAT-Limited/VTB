@@ -12,9 +12,12 @@
         <item name="colorPrimary">@color/dark_accent</item>
         <item name="colorSecondary">@color/dark_accent</item>
         <item name="colorAccent">@color/dark_accent</item>
+        <item name="colorOnPrimary">@color/dark_on_accent</item>
+        <item name="colorOnSecondary">@color/dark_on_accent</item>
+        <item name="android:colorBackground">@color/dark_surface</item>
         <item name="android:textColorPrimary">@color/dark_text</item>
         <item name="android:textColorSecondary">@color/dark_text</item>
-        <item name="android:textColorHint">#7A8078</item>
+        <item name="android:textColorHint">#A6B2A4</item>
         <item name="colorOnSurface">@color/dark_text</item>
         <item name="colorOnBackground">@color/dark_text</item>
     </style>
@@ -26,6 +29,9 @@
         <item name="colorPrimary">@color/day_accent</item>
         <item name="colorSecondary">@color/day_accent</item>
         <item name="colorAccent">@color/day_accent</item>
+        <item name="colorOnPrimary">@color/day_on_accent</item>
+        <item name="colorOnSecondary">@color/day_on_accent</item>
+        <item name="android:colorBackground">@color/day_surface</item>
         <item name="android:textColorPrimary">@color/day_text</item>
         <item name="android:textColorSecondary">@color/day_text</item>
     </style>
@@ -37,9 +43,12 @@
         <item name="colorPrimary">@color/ngreen_accent</item>
         <item name="colorSecondary">@color/ngreen_accent</item>
         <item name="colorAccent">@color/ngreen_accent</item>
+        <item name="colorOnPrimary">@color/ngreen_on_accent</item>
+        <item name="colorOnSecondary">@color/ngreen_on_accent</item>
+        <item name="android:colorBackground">@color/ngreen_surface</item>
         <item name="android:textColorPrimary">@color/ngreen_text</item>
         <item name="android:textColorSecondary">@color/ngreen_text</item>
-        <item name="android:textColorHint">#0F600F</item>
+        <item name="android:textColorHint">#1FA31F</item>
         <item name="colorOnSurface">@color/ngreen_text</item>
     </style>
 
@@ -50,9 +59,12 @@
         <item name="colorPrimary">@color/nred_accent</item>
         <item name="colorSecondary">@color/nred_accent</item>
         <item name="colorAccent">@color/nred_accent</item>
+        <item name="colorOnPrimary">@color/nred_on_accent</item>
+        <item name="colorOnSecondary">@color/nred_on_accent</item>
+        <item name="android:colorBackground">@color/nred_surface</item>
         <item name="android:textColorPrimary">@color/nred_text</item>
         <item name="android:textColorSecondary">@color/nred_text</item>
-        <item name="android:textColorHint">#601010</item>
+        <item name="android:textColorHint">#A62A2A</item>
         <item name="colorOnSurface">@color/nred_text</item>
     </style>
 

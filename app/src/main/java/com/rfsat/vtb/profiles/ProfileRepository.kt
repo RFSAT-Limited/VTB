@@ -12,9 +12,25 @@ class ProfileRepository(context: Context) {
     private val prefs = context.getSharedPreferences("vtb_profiles", Context.MODE_PRIVATE)
     private val gson = Gson()
 
-    fun getRifle(): RifleProfile =
-        prefs.getString(KEY_RIFLE, null)?.let { gson.fromJson(it, RifleProfile::class.java) }
-            ?: RifleProfile.DEFAULT
+    fun getRifle(): RifleProfile {
+        val parsed = prefs.getString(KEY_RIFLE, null)
+            ?.let { runCatching { gson.fromJson(it, RifleProfile::class.java) }.getOrNull() }
+            ?: return RifleProfile.DEFAULT
+        // MIGRATION (v9.0): zero distance moved from yards to metres (default
+        // 100 m). Gson leaves the new field 0.0 on old JSON (it bypasses
+        // Kotlin constructor defaults), so 0.0 => migrate from the legacy
+        // yards value, or fall back to the 100 m default.
+        @Suppress("DEPRECATION")
+        if (parsed.zeroDistanceM <= 0.0) {
+            val migrated = parsed.copy(
+                zeroDistanceM = if (parsed.zeroDistanceYards > 0.0) parsed.zeroDistanceYards * 0.9144
+                                else RifleProfile.DEFAULT.zeroDistanceM
+            )
+            saveRifle(migrated)
+            return migrated
+        }
+        return parsed
+    }
 
     fun saveRifle(profile: RifleProfile) {
         prefs.edit().putString(KEY_RIFLE, gson.toJson(profile)).apply()

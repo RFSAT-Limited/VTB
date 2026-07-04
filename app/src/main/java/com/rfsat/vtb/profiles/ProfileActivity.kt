@@ -75,7 +75,9 @@ class ProfileActivity : BaseActivity() {
             etRifleName.setText(rifle.name)
             etBarrelLength.setText(rifle.barrelLengthIn.toString())
             etTwistRate.setText(rifle.twistRateInPerTurn.toString())
-            etZeroDistance.setText(rifle.zeroDistanceYards.toString())
+            etZeroDistance.hint = "Zero distance (${com.rfsat.vtb.ui.UnitsManager.distanceUnitLabel()})"
+            etZeroDistance.setText(String.format("%.1f",
+                com.rfsat.vtb.ui.UnitsManager.displayDistance(rifle.zeroDistanceM)))
 
             etBulletName.setText(bullet.name)
             etCaliber.setText(bullet.caliberDiameterIn.toString())
@@ -97,7 +99,9 @@ class ProfileActivity : BaseActivity() {
                 name = etRifleName.text.toString().ifBlank { RifleProfile.DEFAULT.name },
                 barrelLengthIn = etBarrelLength.text.toString().toDoubleOrNull() ?: RifleProfile.DEFAULT.barrelLengthIn,
                 twistRateInPerTurn = etTwistRate.text.toString().toDoubleOrNull() ?: RifleProfile.DEFAULT.twistRateInPerTurn,
-                zeroDistanceYards = etZeroDistance.text.toString().toDoubleOrNull() ?: RifleProfile.DEFAULT.zeroDistanceYards
+                zeroDistanceM = etZeroDistance.text.toString().toDoubleOrNull()
+                    ?.let { com.rfsat.vtb.ui.UnitsManager.inputDistanceToMeters(it) }
+                    ?: RifleProfile.DEFAULT.zeroDistanceM
             )
         )
         repo.saveBullet(
