@@ -96,6 +96,9 @@ class CaptureActivity : BaseActivity() {
         binding.crosshair.offsetXNorm = rifle.boresightOffsetXNorm
         binding.crosshair.offsetYNorm = rifle.boresightOffsetYNorm
 
+        binding.etTargetDistance.hint =
+            "Target distance (${com.rfsat.vtb.ui.UnitsManager.distanceUnitLabel()})"
+
         binding.btnNudgeLeft.setOnClickListener { nudgeBoresight(-nudgeStep, 0.0) }
         binding.btnNudgeRight.setOnClickListener { nudgeBoresight(nudgeStep, 0.0) }
         binding.btnNudgeUp.setOnClickListener { nudgeBoresight(0.0, -nudgeStep) }
@@ -246,8 +249,7 @@ class CaptureActivity : BaseActivity() {
             // Duration = expected time-of-flight to the target, plus margin
             // for wind-lengthened flight and trailing smoke dispersal.
             val bullet = repo.getBullet()
-            val targetDistanceYd = binding.etTargetDistance.text.toString().toDoubleOrNull() ?: 100.0
-            val targetDistanceM = targetDistanceYd * 0.9144
+            val targetDistanceM = readTargetDistanceMeters()
             val tof = BallisticsEngine.timeOfFlight(bullet, Atmosphere(), targetDistanceM)
             val durationS = (tof * 1.15 + AUTO_TRIGGER_LATENCY_S).coerceAtLeast(tof + 0.3)
             Logger.i(TAG, "Auto-stop scheduled: est. time-of-flight=${tof}s -> recording for ${durationS}s")
@@ -283,7 +285,7 @@ class CaptureActivity : BaseActivity() {
             return
         }
         val shotBreakOffsetS = binding.etShotBreakSeconds.text.toString().toDoubleOrNull() ?: 0.5
-        val targetDistanceYd = binding.etTargetDistance.text.toString().toDoubleOrNull() ?: 100.0
+        val targetDistanceYd = readTargetDistanceMeters() / 0.9144
         val fovDeg = binding.etHorizontalFov.text.toString().toDoubleOrNull() ?: 60.0
         val referenceBitmap = pendingReferenceBitmap
 
@@ -342,16 +344,20 @@ class CaptureActivity : BaseActivity() {
                 )
 
                 val targetDistanceM = targetDistanceYd * 0.9144
-                val trailSamples = TrailSampleBuilder.build(observations, calibration, bullet, atmosphere, targetDistanceM + 5.0)
-                Logger.i(TAG, "Built ${trailSamples.size} trail samples")
-
-                val windSamples = WindEstimator.estimate(bullet, atmosphere, trailSamples)
-                Logger.i(TAG, "Estimated ${windSamples.size} wind samples")
+                // Trail drift only measures wind AFTER the bullet has passed;
+                // during flight the centroid motion is trail formation.
+                val tofS = BallisticsEngine.timeOfFlight(bullet, atmosphere, targetDistanceM)
+                val windSamples = WindEstimator.estimate(
+                    calibration, observations, targetDistanceM, settleTimeS = tofS * 1.2
+                )
+                Logger.i(TAG, "Estimated ${windSamples.size} wind samples (settle=${"%.2f".format(tofS * 1.2)}s)")
 
                 val adjustment = AdjustmentCalculator.computeAdjustment(
                     bullet, activeRifle, scope, atmosphere, targetDistanceYd, windSamples
                 )
-                Logger.i(TAG, "Adjustment: windage=${adjustment.windageMoa} elevation=${adjustment.elevationMoa}")
+                Logger.i(TAG, "Adjustment: windage=${adjustment.windageDirection} ${adjustment.windageScopeUnits} ${adjustment.scopeUnitLabel}, " +
+                    "elevation=${adjustment.elevationDirection} ${adjustment.elevationScopeUnits} ${adjustment.scopeUnitLabel}, " +
+                    "wind=${adjustment.estimatedCrosswindMps} m/s (conf=${adjustment.windConfidence}), warnings=${adjustment.warnings.size}")
 
                 AnalysisSession.windSamples = windSamples
                 AnalysisSession.adjustment = adjustment
@@ -369,6 +375,13 @@ class CaptureActivity : BaseActivity() {
                 }
             }
         }
+    }
+
+    /** Interprets the target-distance field in the active unit system -> metres. */
+    private fun readTargetDistanceMeters(): Double {
+        val typed = binding.etTargetDistance.text.toString().toDoubleOrNull()
+            ?: if (com.rfsat.vtb.ui.UnitsManager.isImperial()) 100.0 else 100.0
+        return com.rfsat.vtb.ui.UnitsManager.inputDistanceToMeters(typed)
     }
 
     /** Streams a content Uri into a private cache file. Returns null on failure. */

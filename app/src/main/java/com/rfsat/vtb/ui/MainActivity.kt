@@ -43,6 +43,20 @@ class MainActivity : BaseActivity() {
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
 
+        binding.spinnerUnits.adapter = android.widget.ArrayAdapter(
+            this, android.R.layout.simple_spinner_dropdown_item, UnitSystem.values().map { it.label }
+        )
+        binding.spinnerUnits.setSelection(UnitSystem.values().indexOf(UnitsManager.system()))
+        binding.spinnerUnits.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                val selected = UnitSystem.values()[position]
+                if (selected != UnitsManager.system()) {
+                    UnitsManager.setSystem(this@MainActivity, selected)
+                }
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+
         setupBottomNav(com.rfsat.vtb.R.id.nav_home)
     }
 

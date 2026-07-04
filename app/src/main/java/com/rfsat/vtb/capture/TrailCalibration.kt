@@ -38,9 +38,9 @@ data class TrailCalibration(
 
     /**
      * Converts a tracked pixel into world lateral/vertical offsets (metres)
-     * from the boresight, given the bullet's downrange distance at that
-     * instant (from the baseline no-wind trajectory time-of-flight model —
-     * see [TrailSampleBuilder]).
+     * from the boresight at a given downrange distance. (Retained utility —
+     * the v6.0 trail-drift wind estimator works directly in angle space via
+     * [pixelAngleX]/[pixelAngleY].)
      */
     fun toWorldOffsets(pixelX: Double, pixelY: Double, downrangeM: Double): Pair<Double, Double> {
         val lateral = downrangeM * tan(pixelAngleX(pixelX))

@@ -1,130 +1,171 @@
 package com.rfsat.vtb.wind
 
-import com.rfsat.vtb.ballistics.Atmosphere
-import com.rfsat.vtb.ballistics.BallisticsEngine
-import com.rfsat.vtb.profiles.BulletProfile
-
-/**
- * One tracked point on the vapor trail, already converted from video pixels
- * into real-world coordinates relative to the muzzle/line-of-sight origin
- * (see [com.rfsat.vtb.capture.TrailFrameAnalyzer] for the pixel
- * tracking and [com.rfsat.vtb.capture.TrailCalibration] for the
- * pixel -> metre conversion).
- */
-data class TrailSample(
-    val timeS: Double,
-    val downrangeM: Double,
-    val lateralM: Double,   // +right, matches Vec3.z
-    val verticalM: Double   // +up, matches Vec3.y, relative to the bore line
-)
+import com.rfsat.vtb.capture.PixelObservation
+import com.rfsat.vtb.capture.TrailCalibration
+import kotlin.math.abs
 
 data class WindSample(
-    val timeS: Double,
-    val downrangeM: Double,
+    val timeS: Double,          // seconds after shot break (observation time, NOT bullet flight time)
+    val downrangeM: Double,     // effective distance the estimate refers to
     val crosswindMps: Double,   // +right
-    val verticalWindMps: Double // +up (updraft)
+    val verticalWindMps: Double,// +up (updraft)
+    val confidence: Double      // 0..1, tracking confidence x fit quality
 )
 
 /**
- * Inverts a smoothed trail path back into an estimated wind vector at each
- * instant of the bullet's flight.
+ * Estimates wind from the DRIFT of the vapor trail after the shot.
  *
- * Method: the lateral/vertical equations of motion are
- *   a_z(t) = -K(t) * (v_z(t) - wind_z(t))
- *   a_y(t) = -g - K(t) * (v_y(t) - wind_y(t))
- * where K(t) is the drag decay-rate at the bullet's instantaneous speed
- * (from [BallisticsEngine]). Given observed position samples we estimate
- * v(t) and a(t) by local quadratic fits (a cheap, dependency-free stand-in
- * for a Savitzky-Golay filter), then solve directly for wind_z(t)/wind_y(t).
- * This only works well when the trail is tracked with reasonably low pixel
- * noise and reasonably dense, evenly-spaced samples — smooth/resample the
- * raw pixel track before calling this.
+ * PHYSICAL MODEL (v6.0 — replaces the equations-of-motion inversion):
+ * once the bullet has passed, the vapor trail is a passive tracer that is
+ * simply carried by the air. Its angular drift rate seen from the muzzle,
+ * dTheta/dt, times the distance D to the drifting segment, IS the wind
+ * component perpendicular to the line of sight at that segment:
+ *
+ *     crosswind  = D * d(thetaX)/dt      vertical = D * d(thetaY)/dt
+ *
+ * No drag model, no differentiation of noisy position into acceleration,
+ * and — critically — no division by a drag rate that goes to zero when
+ * the tracked object is (correctly!) not moving like a bullet.
+ *
+ * The previous approach fed post-flight trail observations into the
+ * bullet's equations of motion. Past the ~0.3 s time of flight the tracked
+ * centroid is nearly stationary, so the drag-rate term k -> 0 and the
+ * solved wind (which contains g/k) diverged to thousands of m/s — the
+ * -5382 MOA adjustments seen in v5.1.
+ *
+ * The tracker follows the trail's weighted centroid, which mixes segments
+ * at all distances, so D is an EFFECTIVE distance: half the target
+ * distance by default (mid-trail). The result is therefore an average
+ * crosswind over the flight path — exactly what a uniform-wind holdover
+ * solution needs, and the honest limit of what one boresighted camera can
+ * observe. (Per-distance wind profiling would need the trail segmented by
+ * range, which a single centroid can't provide.)
  */
 object WindEstimator {
 
-    private const val G = 9.80665
+    /** Fraction of target distance treated as the centroid's distance. */
+    const val EFFECTIVE_DISTANCE_FRACTION = 0.5
 
+    /** Width of the sliding local-fit window (seconds). */
+    private const val LOCAL_WINDOW_S = 0.6
+
+    /** Minimum observations for any fit. */
+    private const val MIN_POINTS = 5
+
+    /**
+     * @param settleTimeS observations earlier than this (seconds after shot
+     *   break) are discarded — while the bullet is still in flight the
+     *   centroid motion is trail FORMATION, not wind drift. Pass ~1.2x the
+     *   expected time of flight.
+     */
     fun estimate(
-        bullet: BulletProfile,
-        atmosphere: Atmosphere,
-        samples: List<TrailSample>,
-        smoothingWindow: Int = 5
+        calibration: TrailCalibration,
+        observations: List<PixelObservation>,
+        targetDistanceM: Double,
+        settleTimeS: Double,
+        minConfidence: Double = 0.02
     ): List<WindSample> {
-        require(smoothingWindow % 2 == 1) { "smoothingWindow must be odd" }
-        val sorted = samples.sortedBy { it.timeS }
-        if (sorted.size < smoothingWindow + 2) return emptyList()
+        val obs = observations
+            .filter { it.confidence >= minConfidence && it.timestampS >= settleTimeS }
+            .sortedBy { it.timestampS }
+        if (obs.size < MIN_POINTS) return emptyList()
 
-        val half = smoothingWindow / 2
+        val dEff = targetDistanceM * EFFECTIVE_DISTANCE_FRACTION
+        val t = DoubleArray(obs.size) { obs[it].timestampS }
+        val ax = DoubleArray(obs.size) { calibration.pixelAngleX(obs[it].pixelX) }
+        val ay = DoubleArray(obs.size) { calibration.pixelAngleY(obs[it].pixelY) }
+        val cw = DoubleArray(obs.size) { obs[it].confidence }
+
         val out = mutableListOf<WindSample>()
+        val half = LOCAL_WINDOW_S / 2.0
+        for (i in obs.indices) {
+            val tc = t[i]
+            var lo = i; while (lo > 0 && t[lo - 1] >= tc - half) lo--
+            var hi = i; while (hi < obs.size - 1 && t[hi + 1] <= tc + half) hi++
+            if (hi - lo + 1 < MIN_POINTS) continue
 
-        for (i in half until sorted.size - half) {
-            val window = sorted.subList(i - half, i + half + 1)
-            val (vz, az) = fitVelocityAndAccel(window) { it.lateralM }
-            val (vy, ay) = fitVelocityAndAccel(window) { it.verticalM }
+            val fx = weightedSlope(t, ax, cw, lo, hi) ?: continue
+            val fy = weightedSlope(t, ay, cw, lo, hi) ?: continue
 
-            // Total (relative) speed for the drag-rate lookup: downrange
-            // component dominates for any sane crosswind, so approximate
-            // with the local downrange speed plus the small lateral/vertical
-            // components already estimated.
-            val (vx, _) = fitVelocityAndAccel(window) { it.downrangeM }
-            val speedApprox = kotlin.math.sqrt(vx * vx + vy * vy + vz * vz)
-            val k = BallisticsEngine.effectiveDragRate(bullet, atmosphere, speedApprox)
-            if (k < 1e-9) continue
+            var meanConf = 0.0
+            for (j in lo..hi) meanConf += cw[j]
+            meanConf /= (hi - lo + 1)
 
-            val windZ = vz + az / k
-            val windY = vy + (ay + G) / k
-
-            out.add(WindSample(sorted[i].timeS, sorted[i].downrangeM, windZ, windY))
+            out.add(
+                WindSample(
+                    timeS = tc,
+                    downrangeM = dEff,
+                    crosswindMps = dEff * fx.slope,
+                    verticalWindMps = dEff * fy.slope,
+                    confidence = (meanConf * fx.quality * fy.quality).coerceIn(0.0, 1.0)
+                )
+            )
         }
         return out
     }
 
-    /**
-     * Least-squares fit of a quadratic p(t) = c0 + c1*t + c2*t^2 to the
-     * windowed samples, returning (velocity, acceleration) = (c1, 2*c2) at
-     * the window's own local time origin. Small closed-form 3x3 solve —
-     * no external math library needed.
-     */
-    private fun fitVelocityAndAccel(window: List<TrailSample>, coord: (TrailSample) -> Double): Pair<Double, Double> {
-        val t0 = window[window.size / 2].timeS
-        val ts = window.map { it.timeS - t0 }
-        val ys = window.map(coord)
+    private data class Fit(val slope: Double, val quality: Double)
 
-        var s0 = 0.0; var s1 = 0.0; var s2 = 0.0; var s3 = 0.0; var s4 = 0.0
-        var sy0 = 0.0; var sy1 = 0.0; var sy2 = 0.0
-        for (i in ts.indices) {
-            val t = ts[i]; val y = ys[i]
-            val t2 = t * t
-            s0 += 1.0; s1 += t; s2 += t2; s3 += t2 * t; s4 += t2 * t2
-            sy0 += y; sy1 += y * t; sy2 += y * t2
+    /**
+     * Confidence-weighted least-squares line through (t, y) over [lo, hi].
+     * quality in (0, 1]: penalises fits whose RMS residual is large
+     * compared to the total angular travel in the window (i.e. noise-
+     * dominated windows score low).
+     */
+    private fun weightedSlope(t: DoubleArray, y: DoubleArray, w: DoubleArray, lo: Int, hi: Int): Fit? {
+        var sw = 0.0; var st = 0.0; var sy = 0.0
+        for (i in lo..hi) { sw += w[i]; st += w[i] * t[i]; sy += w[i] * y[i] }
+        if (sw < 1e-12) return null
+        val tBar = st / sw; val yBar = sy / sw
+        var stt = 0.0; var sty = 0.0
+        for (i in lo..hi) {
+            val dt = t[i] - tBar
+            stt += w[i] * dt * dt
+            sty += w[i] * dt * (y[i] - yBar)
         }
-        // Solve the 3x3 normal-equations system [s0 s1 s2; s1 s2 s3; s2 s3 s4] * c = [sy0 sy1 sy2]
-        val a = arrayOf(
-            doubleArrayOf(s0, s1, s2, sy0),
-            doubleArrayOf(s1, s2, s3, sy1),
-            doubleArrayOf(s2, s3, s4, sy2)
-        )
-        gaussianEliminate(a)
-        val c1 = a[1][3]
-        val c2 = a[2][3]
-        return Pair(c1, 2.0 * c2)
+        if (stt < 1e-12) return null
+        val slope = sty / stt
+
+        var ss = 0.0; var span = 0.0
+        var yMin = y[lo]; var yMax = y[lo]
+        for (i in lo..hi) {
+            val r = y[i] - (yBar + slope * (t[i] - tBar))
+            ss += w[i] * r * r
+            if (y[i] < yMin) yMin = y[i]
+            if (y[i] > yMax) yMax = y[i]
+        }
+        span = yMax - yMin
+        val rms = kotlin.math.sqrt(ss / sw)
+        val quality = if (span < 1e-9) 0.5 else (1.0 / (1.0 + 3.0 * rms / span)).coerceIn(0.0, 1.0)
+        return Fit(slope, quality)
     }
 
-    /** In-place Gauss-Jordan elimination on a 3x4 augmented matrix. */
-    private fun gaussianEliminate(a: Array<DoubleArray>) {
-        val n = 3
-        for (col in 0 until n) {
-            var pivot = col
-            for (r in col + 1 until n) if (kotlin.math.abs(a[r][col]) > kotlin.math.abs(a[pivot][col])) pivot = r
-            val tmp = a[col]; a[col] = a[pivot]; a[pivot] = tmp
-            val pv = a[col][col]
-            if (kotlin.math.abs(pv) < 1e-12) continue
-            for (c in col..n) a[col][c] = a[col][c] / pv
-            for (r in 0 until n) {
-                if (r == col) continue
-                val factor = a[r][col]
-                for (c in col..n) a[r][c] -= factor * a[col][c]
-            }
+    /**
+     * Single best estimate of the (uniform) wind over the observation:
+     * confidence-weighted mean of the local samples with one pass of
+     * outlier trimming (drop samples > 2.5 sigma from the weighted mean,
+     * refit). Returns (crosswindMps, verticalWindMps, confidence) or null.
+     */
+    fun averageWind(samples: List<WindSample>): Triple<Double, Double, Double>? {
+        if (samples.isEmpty()) return null
+        fun wMean(sel: List<WindSample>, f: (WindSample) -> Double): Double {
+            var sw = 0.0; var s = 0.0
+            for (x in sel) { sw += x.confidence; s += x.confidence * f(x) }
+            return if (sw < 1e-12) sel.sumOf(f) / sel.size else s / sw
         }
+        var sel = samples
+        repeat(2) {
+            val mc = wMean(sel) { it.crosswindMps }
+            val mv = wMean(sel) { it.verticalWindMps }
+            val sdC = kotlin.math.sqrt(sel.sumOf { val d = it.crosswindMps - mc; d * d } / sel.size)
+            val sdV = kotlin.math.sqrt(sel.sumOf { val d = it.verticalWindMps - mv; d * d } / sel.size)
+            val kept = sel.filter {
+                abs(it.crosswindMps - mc) <= 2.5 * sdC.coerceAtLeast(1e-9) &&
+                abs(it.verticalWindMps - mv) <= 2.5 * sdV.coerceAtLeast(1e-9)
+            }
+            if (kept.size >= MIN_POINTS) sel = kept
+        }
+        val conf = sel.map { it.confidence }.average()
+        return Triple(wMean(sel) { it.crosswindMps }, wMean(sel) { it.verticalWindMps }, conf)
     }
 }

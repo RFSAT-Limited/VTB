@@ -15,6 +15,7 @@ class VtbApp : Application() {
         super.onCreate()
         Logger.init(this)
         ThemeManager.init(this)
+        com.rfsat.vtb.ui.UnitsManager.init(this)
 
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->

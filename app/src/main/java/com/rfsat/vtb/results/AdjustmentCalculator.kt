@@ -6,48 +6,42 @@ import com.rfsat.vtb.ballistics.Vec3
 import com.rfsat.vtb.profiles.BulletProfile
 import com.rfsat.vtb.profiles.RifleProfile
 import com.rfsat.vtb.profiles.ScopeProfile
+import com.rfsat.vtb.wind.WindEstimator
 import com.rfsat.vtb.wind.WindSample
+import kotlin.math.abs
 import kotlin.math.atan
 
 data class ScopeAdjustment(
-    val windageMoa: Double,   // +right correction needed on target
-    val elevationMoa: Double, // +up correction needed on target
+    // Angular corrections in the SCOPE'S OWN unit (MRAD for mil scopes,
+    // MOA for MOA scopes). +right / +up.
+    val windageScopeUnits: Double,
+    val elevationScopeUnits: Double,
+    val scopeUnitLabel: String,       // "MRAD" or "MOA"
     val windageClicks: Int,
     val elevationClicks: Int,
-    val windageDirection: String, // "LEFT" or "RIGHT" turret direction
-    val elevationDirection: String, // "UP" or "DOWN" turret direction
-    val impactOffsetInAtTarget: Vec3 // diagnostic: where the last shot landed relative to POA, inches (x unused)
+    val windageDirection: String,     // "LEFT" or "RIGHT" turret direction
+    val elevationDirection: String,   // "UP" or "DOWN" turret direction
+    val estimatedCrosswindMps: Double,     // uniform wind used in the solution, +right
+    val estimatedVerticalWindMps: Double,  // +up
+    val windConfidence: Double,            // 0..1
+    val impactOffsetMAtTarget: Vec3,  // diagnostic: last shot's landing point vs POA, metres (x unused)
+    val warnings: List<String>        // practicality/sanity flags for the Results screen
 )
 
 object AdjustmentCalculator {
 
-    /**
-     * Builds a smooth, interpolated wind function from the discrete
-     * [WindSample]s produced by [com.rfsat.vtb.wind.WindEstimator],
-     * for use as a [com.rfsat.vtb.ballistics.WindProfile] in a
-     * forward simulation. Falls back to the nearest sample outside the
-     * observed time range (i.e. holds the last known wind for target
-     * distances beyond what the trail video covered).
-     */
-    private fun interpolatedWind(samples: List<WindSample>): (Double, Double) -> Vec3 {
-        if (samples.isEmpty()) return { _, _ -> Vec3.ZERO }
-        val sorted = samples.sortedBy { it.timeS }
-        return wind@{ t, _ ->
-            if (t <= sorted.first().timeS) return@wind Vec3(0.0, sorted.first().verticalWindMps, sorted.first().crosswindMps)
-            if (t >= sorted.last().timeS) return@wind Vec3(0.0, sorted.last().verticalWindMps, sorted.last().crosswindMps)
-            val idx = sorted.indexOfLast { it.timeS <= t }
-            val a = sorted[idx]
-            val b = sorted[idx + 1]
-            val f = (t - a.timeS) / (b.timeS - a.timeS)
-            Vec3(0.0, a.verticalWindMps + f * (b.verticalWindMps - a.verticalWindMps),
-                a.crosswindMps + f * (b.crosswindMps - a.crosswindMps))
-        }
-    }
+    private const val MRAD_TO_MOA = 3.43775 // 1 mrad = 3.43775 MOA
+
+    /** Winds above this are treated as implausible for a usable estimate. */
+    private const val MAX_CREDIBLE_WIND_MPS = 25.0 // ~56 mph
 
     /**
      * Computes the scope adjustment needed so the *next* shot lands on the
-     * point of aim, given the estimated wind profile from the last shot's
-     * vapor trail and the current target distance.
+     * point of aim, using the UNIFORM average wind derived from the trail's
+     * drift (see [WindEstimator] for why one boresighted camera can only
+     * support a uniform-wind model). Output is in the scope's own angular
+     * unit and click count, with warnings when the correction is not
+     * practically achievable or the wind estimate is not credible.
      */
     fun computeAdjustment(
         bullet: BulletProfile,
@@ -57,6 +51,24 @@ object AdjustmentCalculator {
         targetDistanceYd: Double,
         windSamples: List<WindSample>
     ): ScopeAdjustment {
+        val warnings = mutableListOf<String>()
+
+        val avg = WindEstimator.averageWind(windSamples)
+        var crossMps = avg?.first ?: 0.0
+        var vertMps = avg?.second ?: 0.0
+        val windConf = avg?.third ?: 0.0
+        if (avg == null) {
+            warnings.add("No usable wind estimate from the trail — this is a zero-wind solution.")
+        } else if (abs(crossMps) > MAX_CREDIBLE_WIND_MPS || abs(vertMps) > MAX_CREDIBLE_WIND_MPS) {
+            warnings.add(
+                "Estimated wind is implausibly strong — check camera FOV, boresight calibration " +
+                "and shot-break time. Falling back to a zero-wind solution."
+            )
+            crossMps = 0.0; vertMps = 0.0
+        } else if (windConf < 0.15) {
+            warnings.add("Low tracking confidence — treat this wind estimate with caution.")
+        }
+
         val targetDistanceM = targetDistanceYd * 0.9144
         // The scope profile owns the optical-centerline height now; fall back
         // to the rifle's legacy sightHeightIn if a profile predates the field.
@@ -64,34 +76,64 @@ object AdjustmentCalculator {
         val zeroDistanceM = rifle.zeroDistanceYards * 0.9144
 
         val pitch = BallisticsEngine.solveZeroPitch(bullet, atmosphere, zeroDistanceM, sightHeightM)
-        val wind = interpolatedWind(windSamples)
+        val uniformWind = Vec3(0.0, vertMps, crossMps)
 
-        val traj = BallisticsEngine.simulate(bullet, atmosphere, pitch, 0.0, targetDistanceM + 1.0, wind)
+        val traj = BallisticsEngine.simulate(bullet, atmosphere, pitch, 0.0, targetDistanceM + 1.0) { _, _ -> uniformWind }
         val atTarget = traj.lastOrNull { it.position.x <= targetDistanceM } ?: traj.last()
+        if (atTarget.position.x < targetDistanceM * 0.95) {
+            warnings.add("Simulated trajectory fell short of the target distance — check bullet profile.")
+        }
 
         // Line of sight is level and starts sightHeightM above the bore.
         val verticalMissM = atTarget.position.y - sightHeightM
         val lateralMissM = atTarget.position.z
 
-        // Convert linear miss at range into angular correction (MOA), then to the
-        // scope's own click unit.
+        // Linear miss at range -> angular correction (opposite to the miss),
+        // first in MOA, then into the scope's own unit.
         val rangeM = atTarget.position.x.coerceAtLeast(1.0)
-        val elevationMoa = radToMoa(atan(verticalMissM / rangeM)) * -1.0 // correct opposite to the miss
+        val elevationMoa = radToMoa(atan(verticalMissM / rangeM)) * -1.0
         val windageMoa = radToMoa(atan(lateralMissM / rangeM)) * -1.0
+
+        val moaPerScopeUnit = if (scope.clickUnitIsMoa) 1.0 else MRAD_TO_MOA
+        val windageScope = windageMoa / moaPerScopeUnit
+        val elevationScope = elevationMoa / moaPerScopeUnit
+        val unitLabel = if (scope.clickUnitIsMoa) "MOA" else "MRAD"
+
+        // Practicality: turret travel specs are TOTAL range; from an
+        // optically-centred zero roughly half is available in each direction.
+        val windageHalfTravelMoa = scope.maxWindageTravelMoa / 2.0
+        val elevationHalfTravelMoa = scope.maxElevationTravelMoa / 2.0
+        if (abs(windageMoa) > windageHalfTravelMoa) {
+            warnings.add(
+                "Windage correction (${fmt(abs(windageScope))} $unitLabel) exceeds the scope's usable travel " +
+                "(±${fmt(windageHalfTravelMoa / moaPerScopeUnit)} $unitLabel from centre) — hold off instead."
+            )
+        }
+        if (abs(elevationMoa) > elevationHalfTravelMoa) {
+            warnings.add(
+                "Elevation correction (${fmt(abs(elevationScope))} $unitLabel) exceeds the scope's usable travel " +
+                "(±${fmt(elevationHalfTravelMoa / moaPerScopeUnit)} $unitLabel from centre) — hold over instead."
+            )
+        }
 
         val clickMoa = if (scope.clickUnitIsMoa) scope.clickValue else scope.clickValue * MRAD_TO_MOA
 
         return ScopeAdjustment(
-            windageMoa = windageMoa,
-            elevationMoa = elevationMoa,
+            windageScopeUnits = windageScope,
+            elevationScopeUnits = elevationScope,
+            scopeUnitLabel = unitLabel,
             windageClicks = Math.round(windageMoa / clickMoa).toInt(),
             elevationClicks = Math.round(elevationMoa / clickMoa).toInt(),
             windageDirection = if (windageMoa >= 0) "RIGHT" else "LEFT",
             elevationDirection = if (elevationMoa >= 0) "UP" else "DOWN",
-            impactOffsetInAtTarget = Vec3(0.0, verticalMissM / 0.0254, lateralMissM / 0.0254)
+            estimatedCrosswindMps = crossMps,
+            estimatedVerticalWindMps = vertMps,
+            windConfidence = windConf,
+            impactOffsetMAtTarget = Vec3(0.0, verticalMissM, lateralMissM),
+            warnings = warnings
         )
     }
 
-    private const val MRAD_TO_MOA = 3.43775 // 1 mrad = 3.43775 MOA
     private fun radToMoa(rad: Double) = Math.toDegrees(rad) * 60.0
+    private fun fmt(v: Double) = String.format("%.1f", v)
 }
