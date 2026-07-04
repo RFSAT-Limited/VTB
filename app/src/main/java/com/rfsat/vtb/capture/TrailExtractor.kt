@@ -1,9 +1,7 @@
 package com.rfsat.vtb.capture
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
-import android.net.Uri
 import android.os.Build
 import com.rfsat.vtb.log.Logger
 import kotlin.math.abs
@@ -44,8 +42,7 @@ object TrailExtractor {
     )
 
     fun extract(
-        context: Context,
-        videoUri: Uri,
+        videoPath: String,
         shotBreakOffsetS: Double,
         clipDurationAfterShotS: Double = 2.0,
         sampleIntervalMs: Long = 33,
@@ -55,7 +52,12 @@ object TrailExtractor {
         val retriever = MediaMetadataRetriever()
         var scaledExternalReference: Bitmap? = null
         try {
-            retriever.setDataSource(context, videoUri)
+            // Plain file path, not a content:// Uri — SAF content Uris are a
+            // known source of native-layer MediaMetadataRetriever failures on
+            // some devices/codecs, which kill the process without a catchable
+            // Java exception (matching the "app resets with no log" symptom).
+            // CaptureActivity copies the video into app cache first.
+            retriever.setDataSource(videoPath)
             logVideoMetadata(retriever)
 
             // Probe one frame to learn source resolution, then pick decode size.

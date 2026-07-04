@@ -161,6 +161,21 @@ increments on corrections/fixes with no new capability. Shown as
   the default (OLED battery savings, low-light suitability), with a
   high-contrast Day mode for direct sunlight and Night modes rendering
   the UI in green or red only (red best preserves dark adaptation).
+- **v5.0** — scope presets fix, crash hardening, tab toolbar, dark-green
+  theme. **Scope fix:** the v4.0 presets were present but a scope profile
+  saved by an earlier version silently overrode the new Continental
+  5-30x56 default on load (Gson fills fields missing from old JSON with
+  zeros); stale profiles are now detected and migrated to the default
+  automatically. **Crash hardening:** imported videos are copied into app
+  cache and analyzed via a plain file path — SAF content:// Uris can
+  crash MediaMetadataRetriever at the native layer on some devices, which
+  kills the process without any catchable Java exception (consistent with
+  the app resetting with no log entry); also enabled largeHeap and
+  guarded chart rendering. If it still fails, the persistent Log tab now
+  survives the restart and will show how far the pipeline got. **UI:**
+  five-tab toolbar (Home / Capture / Profiles / Log / About) on every
+  screen; dark theme palette changed to dark green matching the TinyRAD
+  Manager style.
 
 ## Build
 

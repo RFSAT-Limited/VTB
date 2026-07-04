@@ -14,6 +14,7 @@ class ResultsActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityResultsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        setupBottomNav(com.rfsat.vtb.R.id.nav_capture)
 
         val adjustment = AnalysisSession.adjustment
         if (adjustment == null) {
@@ -34,10 +35,14 @@ class ResultsActivity : BaseActivity() {
                 "${String.format("%.1f", adjustment.impactOffsetInAtTarget.y)} in vertical")
         }
 
+        try {
         val series = LineGraphSeries(
             AnalysisSession.windSamples.map { DataPoint(it.timeS, it.crosswindMps * 2.23694 /* mph */) }.toTypedArray()
         )
         binding.windChart.addSeries(series)
         binding.windChart.title = "Estimated crosswind vs. time-of-flight (mph, +right)"
+        } catch (t: Throwable) {
+            com.rfsat.vtb.log.Logger.e("ResultsActivity", "Chart rendering failed", t)
+        }
     }
 }

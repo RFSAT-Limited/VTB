@@ -25,6 +25,7 @@ class LogActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityLogBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        setupBottomNav(com.rfsat.vtb.R.id.nav_log)
 
         binding.btnFilterAll.setOnClickListener { filter = null; refresh() }
         binding.btnFilterInfo.setOnClickListener { filter = LogLevel.INFO; refresh() }

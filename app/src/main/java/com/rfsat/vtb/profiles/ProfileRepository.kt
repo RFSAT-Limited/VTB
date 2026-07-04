@@ -28,9 +28,25 @@ class ProfileRepository(context: Context) {
         prefs.edit().putString(KEY_BULLET, gson.toJson(profile)).apply()
     }
 
-    fun getScope(): ScopeProfile =
-        prefs.getString(KEY_SCOPE, null)?.let { gson.fromJson(it, ScopeProfile::class.java) }
-            ?: ScopeProfile.DEFAULT
+    fun getScope(): ScopeProfile {
+        val json = prefs.getString(KEY_SCOPE, null) ?: return ScopeProfile.DEFAULT
+        val parsed = runCatching { gson.fromJson(json, ScopeProfile::class.java) }.getOrNull()
+            ?: return ScopeProfile.DEFAULT
+        // MIGRATION: profiles saved before v4.0 predate the optical fields —
+        // Gson leaves those as 0.0/null on old JSON, which silently overrode
+        // the new Continental 5-30x56 default (this is why v4.0 appeared to
+        // "not include" the new scope). Detect a stale/damaged profile and
+        // replace it with the current default once.
+        @Suppress("SENSELESS_COMPARISON")
+        val stale = parsed.name == null || parsed.name.isBlank() ||
+            parsed.name.contains("placeholder", ignoreCase = true) ||
+            (parsed.clickUnit as ClickUnit?) == null ||
+            parsed.zoomMax <= 0.0 || parsed.heightAboveBarrelIn <= 0.0
+        return if (stale) {
+            saveScope(ScopeProfile.DEFAULT)
+            ScopeProfile.DEFAULT
+        } else parsed
+    }
 
     fun saveScope(profile: ScopeProfile) {
         prefs.edit().putString(KEY_SCOPE, gson.toJson(profile)).apply()

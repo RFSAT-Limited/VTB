@@ -91,6 +91,7 @@ class CaptureActivity : BaseActivity() {
         setContentView(binding.root)
         repo = ProfileRepository(this)
         rifle = repo.getRifle()
+        setupBottomNav(com.rfsat.vtb.R.id.nav_capture)
 
         binding.crosshair.offsetXNorm = rifle.boresightOffsetXNorm
         binding.crosshair.offsetYNorm = rifle.boresightOffsetYNorm
@@ -297,9 +298,23 @@ class CaptureActivity : BaseActivity() {
                 val scope = repo.getScope()
                 val atmosphere = Atmosphere() // TODO: wire up a range-conditions input screen
 
+                // Copy the source (recorded or imported) into app cache and
+                // analyze from a plain file path — content:// Uris can crash
+                // MediaMetadataRetriever at the native layer on some devices.
+                val localFile = copyUriToCache(uri)
+                if (localFile == null) {
+                    withContext(Dispatchers.Main) {
+                        setUiBusy(false)
+                        Toast.makeText(this@CaptureActivity, "Could not read the video file — see Log.", Toast.LENGTH_LONG).show()
+                    }
+                    return@launch
+                }
+                Logger.i(TAG, "Video copied to cache: ${localFile.absolutePath} (${localFile.length() / 1024} KB)")
+
                 val extraction = TrailExtractor.extract(
-                    this@CaptureActivity, uri, shotBreakOffsetS, externalReferenceBitmap = referenceBitmap
+                    localFile.absolutePath, shotBreakOffsetS, externalReferenceBitmap = referenceBitmap
                 )
+                localFile.delete()
                 val observations = extraction.observations
                 if (observations.isEmpty()) {
                     withContext(Dispatchers.Main) {
@@ -353,6 +368,21 @@ class CaptureActivity : BaseActivity() {
                     Toast.makeText(this@CaptureActivity, "Analysis failed: ${t.message}. See the Log tab for details.", Toast.LENGTH_LONG).show()
                 }
             }
+        }
+    }
+
+    /** Streams a content Uri into a private cache file. Returns null on failure. */
+    private fun copyUriToCache(uri: Uri): java.io.File? {
+        return try {
+            val out = java.io.File(cacheDir, "analysis_input.mp4")
+            contentResolver.openInputStream(uri).use { input ->
+                if (input == null) { Logger.e(TAG, "openInputStream returned null for $uri"); return null }
+                out.outputStream().use { output -> input.copyTo(output) }
+            }
+            if (out.length() == 0L) { Logger.e(TAG, "Copied video is 0 bytes: $uri"); null } else out
+        } catch (t: Throwable) {
+            Logger.e(TAG, "Failed to copy video to cache", t)
+            null
         }
     }
 

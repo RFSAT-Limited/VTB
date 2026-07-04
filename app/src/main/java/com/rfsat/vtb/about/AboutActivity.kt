@@ -13,5 +13,6 @@ class AboutActivity : BaseActivity() {
         setContentView(binding.root)
 
         binding.tvVersion.text = "Version ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})"
+        setupBottomNav(com.rfsat.vtb.R.id.nav_about)
     }
 }

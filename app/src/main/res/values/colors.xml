@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Dark (default): OLED-friendly, low-light suitable -->
-    <color name="dark_bg">#0E1210</color>
-    <color name="dark_surface">#1A211C</color>
-    <color name="dark_text">#D8D8D0</color>
+    <color name="dark_bg">#0B2818</color>
+    <color name="dark_surface">#124024</color>
+    <color name="dark_text">#DCE8DC</color>
     <color name="dark_accent">#C9A24B</color>
 
     <!-- Day: bright, high contrast for direct sunlight -->

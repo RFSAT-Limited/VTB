@@ -3,10 +3,8 @@ package com.rfsat.vtb.ui
 import android.content.Intent
 import android.os.Bundle
 import com.rfsat.vtb.ui.BaseActivity
-import com.rfsat.vtb.about.AboutActivity
 import com.rfsat.vtb.capture.CaptureActivity
 import com.rfsat.vtb.databinding.ActivityMainBinding
-import com.rfsat.vtb.log.LogActivity
 import com.rfsat.vtb.profiles.ProfileActivity
 import com.rfsat.vtb.profiles.ProfileRepository
 
@@ -45,20 +43,13 @@ class MainActivity : BaseActivity() {
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
 
-        binding.bottomNav.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                com.rfsat.vtb.R.id.nav_home -> true // already home
-                com.rfsat.vtb.R.id.nav_log -> { startActivity(Intent(this, LogActivity::class.java)); false }
-                com.rfsat.vtb.R.id.nav_about -> { startActivity(Intent(this, AboutActivity::class.java)); false }
-                else -> false
-            }
-        }
+        setupBottomNav(com.rfsat.vtb.R.id.nav_home)
     }
 
     override fun onResume() {
         super.onResume()
         refreshSummary(ProfileRepository(this))
-        binding.bottomNav.selectedItemId = com.rfsat.vtb.R.id.nav_home
+        setupBottomNav(com.rfsat.vtb.R.id.nav_home)
     }
 
     private fun refreshSummary(repo: ProfileRepository) {

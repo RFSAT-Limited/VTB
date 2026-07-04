@@ -18,6 +18,7 @@ class ProfileActivity : BaseActivity() {
         binding = ActivityProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
         repo = ProfileRepository(this)
+        setupBottomNav(com.rfsat.vtb.R.id.nav_profiles)
 
         binding.spinnerClickUnit.adapter = ArrayAdapter(
             this, android.R.layout.simple_spinner_dropdown_item,
