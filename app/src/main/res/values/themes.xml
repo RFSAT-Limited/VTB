@@ -1,9 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.VTB" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/primary</item>
-        <item name="colorPrimaryDark">@color/primary_dark</item>
-        <item name="colorAccent">@color/accent</item>
-        <item name="android:windowBackground">@color/background</item>
+    <!-- Base: attributes shared by all four modes -->
+    <style name="Theme.VTB.Base" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="android:statusBarColor">@android:color/black</item>
     </style>
+
+    <!-- Dark: the default. Dark pixels draw less power on OLED and suit low light. -->
+    <style name="Theme.VTB.Dark" parent="Theme.VTB.Base">
+        <item name="android:windowBackground">@color/dark_bg</item>
+        <item name="colorSurface">@color/dark_surface</item>
+        <item name="colorPrimary">@color/dark_accent</item>
+        <item name="colorSecondary">@color/dark_accent</item>
+        <item name="colorAccent">@color/dark_accent</item>
+        <item name="android:textColorPrimary">@color/dark_text</item>
+        <item name="android:textColorSecondary">@color/dark_text</item>
+        <item name="android:textColorHint">#7A8078</item>
+        <item name="colorOnSurface">@color/dark_text</item>
+        <item name="colorOnBackground">@color/dark_text</item>
+    </style>
+
+    <!-- Day: bright, high contrast for direct sunlight legibility -->
+    <style name="Theme.VTB.Day" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="android:windowBackground">@color/day_bg</item>
+        <item name="colorSurface">@color/day_surface</item>
+        <item name="colorPrimary">@color/day_accent</item>
+        <item name="colorSecondary">@color/day_accent</item>
+        <item name="colorAccent">@color/day_accent</item>
+        <item name="android:textColorPrimary">@color/day_text</item>
+        <item name="android:textColorSecondary">@color/day_text</item>
+    </style>
+
+    <!-- Night Green: monochrome green on black -->
+    <style name="Theme.VTB.NightGreen" parent="Theme.VTB.Base">
+        <item name="android:windowBackground">@color/ngreen_bg</item>
+        <item name="colorSurface">@color/ngreen_surface</item>
+        <item name="colorPrimary">@color/ngreen_accent</item>
+        <item name="colorSecondary">@color/ngreen_accent</item>
+        <item name="colorAccent">@color/ngreen_accent</item>
+        <item name="android:textColorPrimary">@color/ngreen_text</item>
+        <item name="android:textColorSecondary">@color/ngreen_text</item>
+        <item name="android:textColorHint">#0F600F</item>
+        <item name="colorOnSurface">@color/ngreen_text</item>
+    </style>
+
+    <!-- Night Red: monochrome red on black — preserves night vision best -->
+    <style name="Theme.VTB.NightRed" parent="Theme.VTB.Base">
+        <item name="android:windowBackground">@color/nred_bg</item>
+        <item name="colorSurface">@color/nred_surface</item>
+        <item name="colorPrimary">@color/nred_accent</item>
+        <item name="colorSecondary">@color/nred_accent</item>
+        <item name="colorAccent">@color/nred_accent</item>
+        <item name="android:textColorPrimary">@color/nred_text</item>
+        <item name="android:textColorSecondary">@color/nred_text</item>
+        <item name="android:textColorHint">#601010</item>
+        <item name="colorOnSurface">@color/nred_text</item>
+    </style>
+
+    <!-- Manifest default points here; BaseActivity swaps at runtime -->
+    <style name="Theme.VTB" parent="Theme.VTB.Dark" />
 </resources>

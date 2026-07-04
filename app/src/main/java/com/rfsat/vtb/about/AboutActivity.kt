@@ -1,11 +1,11 @@
 package com.rfsat.vtb.about
 
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
+import com.rfsat.vtb.ui.BaseActivity
 import com.rfsat.vtb.BuildConfig
 import com.rfsat.vtb.databinding.ActivityAboutBinding
 
-class AboutActivity : AppCompatActivity() {
+class AboutActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

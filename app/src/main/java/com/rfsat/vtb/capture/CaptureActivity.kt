@@ -10,7 +10,7 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
+import com.rfsat.vtb.ui.BaseActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -35,7 +35,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class CaptureActivity : AppCompatActivity() {
+class CaptureActivity : BaseActivity() {
 
     private lateinit var binding: ActivityCaptureBinding
     private lateinit var repo: ProfileRepository
@@ -297,9 +297,10 @@ class CaptureActivity : AppCompatActivity() {
                 val scope = repo.getScope()
                 val atmosphere = Atmosphere() // TODO: wire up a range-conditions input screen
 
-                val observations = TrailExtractor.extract(
+                val extraction = TrailExtractor.extract(
                     this@CaptureActivity, uri, shotBreakOffsetS, externalReferenceBitmap = referenceBitmap
                 )
+                val observations = extraction.observations
                 if (observations.isEmpty()) {
                     withContext(Dispatchers.Main) {
                         setUiBusy(false)
@@ -308,15 +309,12 @@ class CaptureActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                // Frame size isn't known until a frame is decoded; TrailExtractor
-                // returns pixel coords in the actual decoded frame's resolution, and
-                // the boresight was marked in normalized preview coordinates, so we
-                // scale using the preview view's size. This assumes the recorded/
-                // imported video shares the preview's aspect ratio — true for
-                // MediaStore captures on most phones; may need adjusting for
-                // arbitrary imported test clips of a different aspect ratio.
-                val frameWidthPx = withContext(Dispatchers.Main) { binding.previewView.width }
-                val frameHeightPx = withContext(Dispatchers.Main) { binding.previewView.height }
+                // Calibration is done in the extractor's own decoded-frame pixel
+                // space (returned in ExtractionResult), so pixel coordinates and
+                // the boresight reference are guaranteed consistent — including
+                // for imported clips whose resolution differs from the preview.
+                val frameWidthPx = extraction.decodedFrameWidth
+                val frameHeightPx = extraction.decodedFrameHeight
                 val boresightXNorm = 0.5 + activeRifle.boresightOffsetXNorm
                 val boresightYNorm = 0.5 + activeRifle.boresightOffsetYNorm
 

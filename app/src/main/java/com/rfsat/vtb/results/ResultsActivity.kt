@@ -1,12 +1,12 @@
 package com.rfsat.vtb.results
 
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
+import com.rfsat.vtb.ui.BaseActivity
 import com.jjoe64.graphview.series.DataPoint
 import com.jjoe64.graphview.series.LineGraphSeries
 import com.rfsat.vtb.databinding.ActivityResultsBinding
 
-class ResultsActivity : AppCompatActivity() {
+class ResultsActivity : BaseActivity() {
 
     private lateinit var binding: ActivityResultsBinding
 

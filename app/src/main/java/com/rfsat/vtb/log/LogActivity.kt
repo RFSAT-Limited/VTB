@@ -1,25 +1,35 @@
 package com.rfsat.vtb.log
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import com.rfsat.vtb.databinding.ActivityLogBinding
+import com.rfsat.vtb.ui.BaseActivity
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class LogActivity : AppCompatActivity() {
+class LogActivity : BaseActivity() {
 
     private lateinit var binding: ActivityLogBinding
+    private var filter: LogLevel? = null // null = show all
     private val listener: () -> Unit = { runOnUiThread { refresh() } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityLogBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        binding.btnFilterAll.setOnClickListener { filter = null; refresh() }
+        binding.btnFilterInfo.setOnClickListener { filter = LogLevel.INFO; refresh() }
+        binding.btnFilterWarn.setOnClickListener { filter = LogLevel.WARNING; refresh() }
+        binding.btnFilterError.setOnClickListener { filter = LogLevel.ERROR; refresh() }
 
         refresh()
         Logger.addListener(listener)
@@ -36,8 +46,25 @@ class LogActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    private fun colorFor(level: LogLevel): Int = when (level) {
+        LogLevel.ERROR -> Color.parseColor("#FF5252")
+        LogLevel.WARNING -> Color.parseColor("#FFB74D")
+        LogLevel.INFO -> Color.parseColor("#9ECFA0")
+    }
+
     private fun refresh() {
-        binding.tvLog.text = Logger.asText().ifBlank { "(log is empty)" }
+        val entries = Logger.snapshotOfLevel(filter)
+        if (entries.isEmpty()) {
+            binding.tvLog.text = "(no ${filter?.name?.lowercase() ?: ""} entries)"
+            return
+        }
+        val sb = SpannableStringBuilder()
+        for (e in entries) {
+            val start = sb.length
+            sb.append(e.toString()).append("\n")
+            sb.setSpan(ForegroundColorSpan(colorFor(e.level)), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        binding.tvLog.text = sb
         binding.scrollLog.post { binding.scrollLog.fullScroll(android.view.View.FOCUS_DOWN) }
     }
 
@@ -46,7 +73,7 @@ class LogActivity : AppCompatActivity() {
             val dir = File(getExternalFilesDir(null), "logs").apply { mkdirs() }
             val name = "vtb_log_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.txt"
             val file = File(dir, name)
-            file.writeText(Logger.asText())
+            file.writeText(Logger.asText(filter))
             file
         } catch (t: Throwable) {
             Logger.e("LogActivity", "Failed to save log", t)

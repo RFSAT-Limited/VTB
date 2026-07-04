@@ -14,7 +14,6 @@
         <EditText android:id="@+id/etRifleName" android:hint="Rifle name" android:layout_width="match_parent" android:layout_height="wrap_content"/>
         <EditText android:id="@+id/etBarrelLength" android:hint="Barrel length (in)" android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
         <EditText android:id="@+id/etTwistRate" android:hint="Twist rate (in per turn)" android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
-        <EditText android:id="@+id/etSightHeight" android:hint="Sight height over bore (in)" android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
         <EditText android:id="@+id/etZeroDistance" android:hint="Zero distance (yd)" android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
 
         <TextView android:text="@string/bullet_profile" android:textStyle="bold" android:textSize="18sp"
@@ -27,7 +26,17 @@
 
         <TextView android:text="@string/scope_profile" android:textStyle="bold" android:textSize="18sp"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:layout_marginBottom="8dp"/>
+        <Spinner android:id="@+id/spinnerScopePreset" android:layout_width="match_parent" android:layout_height="wrap_content"/>
         <EditText android:id="@+id/etScopeName" android:hint="Scope name" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <EditText android:id="@+id/etZoomMin" android:hint="Zoom min (x)" android:inputType="numberDecimal" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+            <EditText android:id="@+id/etZoomMax" android:hint="Zoom max (x)" android:inputType="numberDecimal" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <EditText android:id="@+id/etObjectiveDiameter" android:hint="Objective (mm)" android:inputType="numberDecimal" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+            <EditText android:id="@+id/etFocalLength" android:hint="Focal length (mm)" android:inputType="numberDecimal" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+        </LinearLayout>
+        <EditText android:id="@+id/etHeightAboveBarrel" android:hint="Height above barrel (in)" android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
         <Spinner android:id="@+id/spinnerClickUnit" android:layout_width="match_parent" android:layout_height="wrap_content"/>
 
         <Button android:id="@+id/btnSave" android:text="@string/save" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp"/>

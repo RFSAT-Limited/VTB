@@ -58,7 +58,9 @@ object AdjustmentCalculator {
         windSamples: List<WindSample>
     ): ScopeAdjustment {
         val targetDistanceM = targetDistanceYd * 0.9144
-        val sightHeightM = rifle.sightHeightIn * 0.0254
+        // The scope profile owns the optical-centerline height now; fall back
+        // to the rifle's legacy sightHeightIn if a profile predates the field.
+        val sightHeightM = (if (scope.heightAboveBarrelIn > 0) scope.heightAboveBarrelIn else rifle.sightHeightIn) * 0.0254
         val zeroDistanceM = rifle.zeroDistanceYards * 0.9144
 
         val pitch = BallisticsEngine.solveZeroPitch(bullet, atmosphere, zeroDistanceM, sightHeightM)

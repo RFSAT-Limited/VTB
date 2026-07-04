@@ -139,6 +139,28 @@ increments on corrections/fixes with no new capability. Shown as
   footage to pull a background frame from). Sensitivity is field-tunable
   (0-100). See `ShotDetector`'s doc comment for the latency caveat — this
   is not a zero-latency trigger.
+- **v4.0** — crash fix + several features. **Crash fix:** analysis of
+  imported videos was killing the process (app "resetting to start
+  screen") — prime suspect was decoding full-resolution (up to 4K) frames
+  per sample, ~33 MB per bitmap; frames are now decoded at <=640 px wide
+  via `getScaledFrameAtTime`, OutOfMemoryError is caught and logged, and a
+  global uncaught-exception handler now writes crashes to a persistent
+  log file, since the previous in-memory-only log evaporated with the
+  process — exactly why it showed up empty. The Log tab now restores the
+  previous session's tail on launch, classifies entries as Info / Warning /
+  Error with color coding and filter buttons, and calibration now uses the
+  extractor's own decoded-frame pixel space (fixes wrong pixel-to-angle
+  scaling for imported clips whose resolution differs from the preview).
+  **Features:** one-word buttons (Capture / Import / Analyse); scope
+  pull-down with presets (defaulting to the Continental 5-30x56) plus
+  zoom range, objective, focal length, and height-above-barrel parameters
+  (the latter now feeds the ballistic solver, replacing the rifle's
+  sight-height field); refraction-aware trail detection — the trail bends
+  light, so the detector now scores |brightness delta| plus a Sobel
+  gradient-distortion term instead of bright-pixels-only; dark theme is
+  the default (OLED battery savings, low-light suitability), with a
+  high-contrast Day mode for direct sunlight and Night modes rendering
+  the UI in green or red only (red best preserves dark adaptation).
 
 ## Build
 

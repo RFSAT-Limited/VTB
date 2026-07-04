@@ -1,14 +1,17 @@
 package com.rfsat.vtb.profiles
 
 import android.os.Bundle
+import android.view.View
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import androidx.appcompat.app.AppCompatActivity
 import com.rfsat.vtb.databinding.ActivityProfileBinding
+import com.rfsat.vtb.ui.BaseActivity
 
-class ProfileActivity : AppCompatActivity() {
+class ProfileActivity : BaseActivity() {
 
     private lateinit var binding: ActivityProfileBinding
     private lateinit var repo: ProfileRepository
+    private var suppressPresetCallback = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -20,6 +23,19 @@ class ProfileActivity : AppCompatActivity() {
             this, android.R.layout.simple_spinner_dropdown_item,
             arrayOf("1/4 MOA per click", "1/8 MOA per click", "0.1 MRAD per click")
         )
+        binding.spinnerScopePreset.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_dropdown_item,
+            ScopeProfile.PRESETS.map { it.name }
+        )
+        binding.spinnerScopePreset.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (suppressPresetCallback) { suppressPresetCallback = false; return }
+                val preset = ScopeProfile.PRESETS[position]
+                if (preset.name.startsWith("Custom")) return // leave fields as user typed them
+                fillScopeFields(preset)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
 
         loadIntoFields()
 
@@ -33,6 +49,22 @@ class ProfileActivity : AppCompatActivity() {
         }
     }
 
+    private fun fillScopeFields(scope: ScopeProfile) = with(binding) {
+        etScopeName.setText(scope.name)
+        etZoomMin.setText(scope.zoomMin.toString())
+        etZoomMax.setText(scope.zoomMax.toString())
+        etObjectiveDiameter.setText(scope.objectiveDiameterMm.toString())
+        etFocalLength.setText(scope.focalLengthMm.toString())
+        etHeightAboveBarrel.setText(scope.heightAboveBarrelIn.toString())
+        spinnerClickUnit.setSelection(
+            when (scope.clickUnit) {
+                ClickUnit.MOA_QUARTER -> 0
+                ClickUnit.MOA_EIGHTH -> 1
+                ClickUnit.MRAD_TENTH -> 2
+            }
+        )
+    }
+
     private fun loadIntoFields() {
         val rifle = repo.getRifle()
         val bullet = repo.getBullet()
@@ -42,7 +74,6 @@ class ProfileActivity : AppCompatActivity() {
             etRifleName.setText(rifle.name)
             etBarrelLength.setText(rifle.barrelLengthIn.toString())
             etTwistRate.setText(rifle.twistRateInPerTurn.toString())
-            etSightHeight.setText(rifle.sightHeightIn.toString())
             etZeroDistance.setText(rifle.zeroDistanceYards.toString())
 
             etBulletName.setText(bullet.name)
@@ -51,24 +82,20 @@ class ProfileActivity : AppCompatActivity() {
             etMuzzleVelocity.setText(bullet.muzzleVelocityFps.toString())
             etBallisticCoefficient.setText(bullet.ballisticCoefficientG1.toString())
 
-            etScopeName.setText(scope.name)
-            spinnerClickUnit.setSelection(
-                when (scope.clickUnit) {
-                    ClickUnit.MOA_QUARTER -> 0
-                    ClickUnit.MOA_EIGHTH -> 1
-                    ClickUnit.MRAD_TENTH -> 2
-                }
-            )
+            // Select the matching preset (or Custom) without clobbering fields.
+            suppressPresetCallback = true
+            val presetIdx = ScopeProfile.PRESETS.indexOfFirst { it.name == scope.name }
+            spinnerScopePreset.setSelection(if (presetIdx >= 0) presetIdx else ScopeProfile.PRESETS.size - 1)
         }
+        fillScopeFields(scope)
     }
 
     private fun saveFromFields() = with(binding) {
         repo.saveRifle(
-            RifleProfile(
+            repo.getRifle().copy( // preserve boresight calibration offsets
                 name = etRifleName.text.toString().ifBlank { RifleProfile.DEFAULT.name },
                 barrelLengthIn = etBarrelLength.text.toString().toDoubleOrNull() ?: RifleProfile.DEFAULT.barrelLengthIn,
                 twistRateInPerTurn = etTwistRate.text.toString().toDoubleOrNull() ?: RifleProfile.DEFAULT.twistRateInPerTurn,
-                sightHeightIn = etSightHeight.text.toString().toDoubleOrNull() ?: RifleProfile.DEFAULT.sightHeightIn,
                 zeroDistanceYards = etZeroDistance.text.toString().toDoubleOrNull() ?: RifleProfile.DEFAULT.zeroDistanceYards
             )
         )
@@ -89,7 +116,12 @@ class ProfileActivity : AppCompatActivity() {
         repo.saveScope(
             ScopeProfile(
                 name = etScopeName.text.toString().ifBlank { ScopeProfile.DEFAULT.name },
-                clickUnit = unit
+                clickUnit = unit,
+                zoomMin = etZoomMin.text.toString().toDoubleOrNull() ?: ScopeProfile.DEFAULT.zoomMin,
+                zoomMax = etZoomMax.text.toString().toDoubleOrNull() ?: ScopeProfile.DEFAULT.zoomMax,
+                objectiveDiameterMm = etObjectiveDiameter.text.toString().toDoubleOrNull() ?: ScopeProfile.DEFAULT.objectiveDiameterMm,
+                focalLengthMm = etFocalLength.text.toString().toDoubleOrNull() ?: ScopeProfile.DEFAULT.focalLengthMm,
+                heightAboveBarrelIn = etHeightAboveBarrel.text.toString().toDoubleOrNull() ?: ScopeProfile.DEFAULT.heightAboveBarrelIn
             )
         )
     }

@@ -2,7 +2,7 @@ package com.rfsat.vtb.ui
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
+import com.rfsat.vtb.ui.BaseActivity
 import com.rfsat.vtb.about.AboutActivity
 import com.rfsat.vtb.capture.CaptureActivity
 import com.rfsat.vtb.databinding.ActivityMainBinding
@@ -10,7 +10,7 @@ import com.rfsat.vtb.log.LogActivity
 import com.rfsat.vtb.profiles.ProfileActivity
 import com.rfsat.vtb.profiles.ProfileRepository
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : BaseActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
@@ -28,6 +28,21 @@ class MainActivity : AppCompatActivity() {
         }
         binding.btnCapture.setOnClickListener {
             startActivity(Intent(this, CaptureActivity::class.java))
+        }
+
+        binding.spinnerTheme.adapter = android.widget.ArrayAdapter(
+            this, android.R.layout.simple_spinner_dropdown_item, ThemeMode.values().map { it.label }
+        )
+        binding.spinnerTheme.setSelection(ThemeMode.values().indexOf(ThemeManager.mode()))
+        binding.spinnerTheme.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                val selected = ThemeMode.values()[position]
+                if (selected != ThemeManager.mode()) {
+                    ThemeManager.setMode(this@MainActivity, selected)
+                    recreate() // re-inflate with the new theme
+                }
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
 
         binding.bottomNav.setOnItemSelectedListener { item ->
