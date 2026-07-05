@@ -146,7 +146,24 @@ object WindEstimator {
      * outlier trimming (drop samples > 2.5 sigma from the weighted mean,
      * refit). Returns (crosswindMps, verticalWindMps, confidence) or null.
      */
+    /** Hard plausibility ceiling for a single wind sample (m/s). 15 m/s is
+     *  already a near-gale (54 km/h) — no practical shooting session, and no
+     *  coherent vapor trail on video, happens beyond that. Samples above it
+     *  are tracking artefacts and must not drag the average. */
+    const val MAX_PLAUSIBLE_SAMPLE_MPS = 15.0
+
     fun averageWind(samples: List<WindSample>): Triple<Double, Double, Double>? {
+        val plausible = samples.filter {
+            abs(it.crosswindMps) <= MAX_PLAUSIBLE_SAMPLE_MPS &&
+            abs(it.verticalWindMps) <= MAX_PLAUSIBLE_SAMPLE_MPS
+        }
+        // If most of what we measured is implausible, the measurement itself
+        // is untrustworthy — report no estimate rather than a laundered one.
+        if (plausible.size < samples.size / 2 || plausible.isEmpty()) return null
+        return averageWindInner(plausible)
+    }
+
+    private fun averageWindInner(samples: List<WindSample>): Triple<Double, Double, Double>? {
         if (samples.isEmpty()) return null
         fun wMean(sel: List<WindSample>, f: (WindSample) -> Double): Double {
             var sw = 0.0; var s = 0.0

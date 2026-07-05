@@ -35,8 +35,16 @@ object AdjustmentCalculator {
 
     private const val MRAD_TO_MOA = 3.43775 // 1 mrad = 3.43775 MOA
 
-    /** Winds above this are treated as implausible for a usable estimate. */
-    private const val MAX_CREDIBLE_WIND_MPS = 25.0 // ~56 mph
+    /** Hard rejection: above this the estimate is an artefact, full stop.
+     *  15 m/s = 54 km/h = near-gale; not a practical shooting condition and
+     *  not something a filmed vapor trail survives coherently. */
+    private const val MAX_CREDIBLE_WIND_MPS = 15.0
+    /** Caution band: 8 m/s (29 km/h, Beaufort 5) is already an unusually
+     *  strong wind to be shooting in — plausible, but worth flagging. */
+    private const val STRONG_WIND_MPS = 8.0
+    /** Below this the fit is statistically meaningless — using it would be
+     *  worse than the zero-wind solution it replaces. */
+    private const val MIN_USABLE_CONFIDENCE = 0.05
 
     /**
      * Computes the scope adjustment needed so the *next* shot lands on the
@@ -61,15 +69,29 @@ object AdjustmentCalculator {
         var vertMps = avg?.second ?: 0.0
         val windConf = avg?.third ?: 0.0
         if (avg == null) {
-            warnings.add("No usable wind estimate from the trail — this is a zero-wind solution.")
+            warnings.add("No usable wind estimate from the trail (none, or mostly implausible samples) — this is a zero-wind solution.")
         } else if (abs(crossMps) > MAX_CREDIBLE_WIND_MPS || abs(vertMps) > MAX_CREDIBLE_WIND_MPS) {
             warnings.add(
-                "Estimated wind is implausibly strong — check camera FOV, boresight calibration " +
-                "and shot-break time. Falling back to a zero-wind solution."
+                "Estimated wind exceeds any practical shooting condition (>${MAX_CREDIBLE_WIND_MPS.toInt()} m/s) — " +
+                "check camera FOV, boresight calibration and shot-break time. Falling back to a zero-wind solution."
             )
             crossMps = 0.0; vertMps = 0.0
-        } else if (windConf < 0.15) {
-            warnings.add("Low tracking confidence — treat this wind estimate with caution.")
+        } else if (windConf < MIN_USABLE_CONFIDENCE) {
+            warnings.add(
+                "Tracking confidence too low (${(windConf * 100).toInt()}%) for a usable wind estimate — " +
+                "falling back to a zero-wind solution."
+            )
+            crossMps = 0.0; vertMps = 0.0
+        } else {
+            if (abs(crossMps) > STRONG_WIND_MPS) {
+                warnings.add(
+                    "Estimated crosswind ${"%.1f".format(abs(crossMps))} m/s is unusually strong for " +
+                    "practical shooting — verify it matches conditions at the range before dialling."
+                )
+            }
+            if (windConf < 0.15) {
+                warnings.add("Low tracking confidence — treat this wind estimate with caution.")
+            }
         }
 
         val targetDistanceM = targetDistanceYd * 0.9144

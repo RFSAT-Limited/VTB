@@ -40,6 +40,7 @@ class CaptureActivity : BaseActivity() {
     private lateinit var binding: ActivityCaptureBinding
     private lateinit var repo: ProfileRepository
     private var videoCapture: VideoCapture<Recorder>? = null
+    private var lastAutoFov: String? = null
     private var recording: Recording? = null
     private var pendingUri: Uri? = null // set by the recorder, the video-import picker, or an auto-trigger
 
@@ -101,8 +102,8 @@ class CaptureActivity : BaseActivity() {
         binding.crosshair.offsetXNorm = rifle.boresightOffsetXNorm
         binding.crosshair.offsetYNorm = rifle.boresightOffsetYNorm
 
-        binding.etTargetDistance.hint =
-            "Target distance (${com.rfsat.vtb.ui.UnitsManager.distanceUnitLabel()})"
+        binding.tvTargetLabel.text =
+            "Target (${com.rfsat.vtb.ui.UnitsManager.distanceUnitLabel()})"
 
         binding.btnNudgeLeft.setOnClickListener { nudgeBoresight(-nudgeStep, 0.0) }
         binding.btnNudgeRight.setOnClickListener { nudgeBoresight(nudgeStep, 0.0) }
@@ -163,7 +164,16 @@ class CaptureActivity : BaseActivity() {
             // The field stays editable for imported clips from other devices.
             camera.cameraInfo.zoomState.observe(this) {
                 CameraFovProvider.horizontalFovDeg(camera)?.let { fov ->
-                    binding.etHorizontalFov.setText(String.format("%.1f", fov))
+                    val txt = String.format("%.1f", fov)
+                    val cur = binding.etHorizontalFov.text.toString()
+                    // Only replace an EMPTY field or our own previous auto
+                    // value. zoomState re-emits on every camera re-bind (each
+                    // return from the picker), and the unguarded version kept
+                    // stomping manual entries for imported clips.
+                    if (cur.isBlank() || cur == lastAutoFov) {
+                        binding.etHorizontalFov.setText(txt)
+                    }
+                    lastAutoFov = txt
                 }
             }
         }, ContextCompat.getMainExecutor(this))
@@ -306,6 +316,13 @@ class CaptureActivity : BaseActivity() {
         val shotBreakOffsetS = binding.etShotBreakSeconds.text.toString().toDoubleOrNull() ?: 0.5
         val targetDistanceYd = readTargetDistanceMeters() / 0.9144
         val fovDeg = binding.etHorizontalFov.text.toString().toDoubleOrNull() ?: 60.0
+        // FOV gates the entire pixel-to-angle calibration; out-of-range values
+        // (e.g. a distance typed into the wrong field) poison every result.
+        if (fovDeg !in 10.0..120.0) {
+            Logger.e(TAG, "Rejected analysis: FOV $fovDeg deg outside 10-120")
+            Toast.makeText(this, "Camera FOV must be 10–120° (got ${"%.0f".format(fovDeg)}°).", Toast.LENGTH_LONG).show()
+            return
+        }
         val referenceBitmap = pendingReferenceBitmap
 
         setUiBusy(true)

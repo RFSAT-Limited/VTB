@@ -24,13 +24,22 @@ class CrosshairOverlayView @JvmOverloads constructor(
     var offsetYNorm: Double = 0.0
         set(value) { field = value; invalidate() }
 
+    // Follow the active display style: same colour as the theme's primary
+    // text (gold in Dark, dark green in Day, pure green/red in night modes).
+    private val themeTextColor: Int = run {
+        val tv = android.util.TypedValue()
+        if (context.theme.resolveAttribute(android.R.attr.textColorPrimary, tv, true)) {
+            if (tv.resourceId != 0) context.getColor(tv.resourceId) else tv.data
+        } else Color.parseColor("#C9A24B")
+    }
+
     private val linePaint = Paint().apply {
-        color = Color.parseColor("#C9A24B")
+        color = themeTextColor
         strokeWidth = 3f
         isAntiAlias = true
     }
     private val circlePaint = Paint().apply {
-        color = Color.parseColor("#C9A24B")
+        color = themeTextColor
         strokeWidth = 3f
         style = Paint.Style.STROKE
         isAntiAlias = true
