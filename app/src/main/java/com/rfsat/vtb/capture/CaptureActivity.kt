@@ -374,6 +374,7 @@ class CaptureActivity : BaseActivity() {
                 AnalysisSession.windSamples = windSamples
                 AnalysisSession.adjustment = adjustment
                 AnalysisSession.targetDistanceYd = targetDistanceYd
+                AnalysisSession.persist(this@CaptureActivity)
 
                 withContext(Dispatchers.Main) {
                     setUiBusy(false)
