@@ -31,7 +31,7 @@ class ResultsActivity : BaseActivity() {
             binding.tvElevationBig.text = "—"
             binding.tvRowTarget.text =
                 "Target: ${fmt1(UnitsManager.displayDistance(AnalysisSession.targetDistanceYd * 0.9144))} " +
-                UnitsManager.distanceUnitLabel()
+                UnitsManager.distanceUnitLabel() + cameraSuffix()
             binding.tvWarnings.visibility = View.VISIBLE
             binding.tvWarnings.text = adjustment.warnings.joinToString("\n") { "\u26A0 $it" }
             return
@@ -56,7 +56,8 @@ class ResultsActivity : BaseActivity() {
         val oU = UnitsManager.offsetUnitLabel()
 
         binding.tvRowTarget.text =
-            "Target: ${fmt1(UnitsManager.displayDistance(AnalysisSession.targetDistanceYd * 0.9144))} $dU"
+            "Target: ${fmt1(UnitsManager.displayDistance(AnalysisSession.targetDistanceYd * 0.9144))} $dU" +
+            cameraSuffix()
 
         binding.tvRowWind.text =
             "Wind: ${fmt1(UnitsManager.displaySpeed(abs(adjustment.estimatedCrosswindMps)))} $sU " +
@@ -79,6 +80,18 @@ class ResultsActivity : BaseActivity() {
             AnalysisSession.windSamples.map { it.timeS to UnitsManager.displaySpeed(it.crosswindMps) }
         )
         binding.windChart.title = "Crosswind vs. s after shot ($sU, +right)"
+    }
+
+    /** Camera calibration this analysis used, e.g. " · 46.1° @3.0× → 15.9°".
+     *  Empty for payloads saved before v13.0 (fields deserialize to 0). */
+    private fun cameraSuffix(): String {
+        if (AnalysisSession.baseFovDeg <= 0.0 || AnalysisSession.cameraZoom <= 0.0) return ""
+        val base = fmt1(AnalysisSession.baseFovDeg)
+        val zoom = fmt1(AnalysisSession.cameraZoom)
+        return if (AnalysisSession.cameraZoom == 1.0)
+            " · FOV $base°"
+        else
+            " · FOV $base° @${zoom}× → ${fmt1(AnalysisSession.effectiveFovDeg)}°"
     }
 
     private fun fmt1(v: Double) = String.format("%.1f", v)

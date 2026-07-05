@@ -46,6 +46,7 @@ class CaptureActivity : BaseActivity() {
 
     private var rifle: RifleProfile = RifleProfile.DEFAULT
     private val nudgeStep = 0.005 // normalized frame fraction per tap
+    private var lastAutoZoom: String? = null
 
     private var audioPermissionGranted = false
     private var shotDetector: ShotDetector? = null
@@ -63,6 +64,17 @@ class CaptureActivity : BaseActivity() {
         private const val DRIFT_OBSERVATION_S = 2.5
 
         private const val TAG = "CaptureActivity"
+
+        // Capture-screen field persistence (v13.0). The bottom nav keeps the
+        // back stack flat by finish()ing the source activity on every tab
+        // hop, so Capture is REBUILT each time the user returns from Results
+        // — without these prefs the target distance (etc.) was lost right
+        // after every analysis.
+        private const val FIELD_PREFS = "vtb_capture_fields"
+        private const val KEY_DISTANCE_M = "target_distance_m" // stored SI so a unit-system switch stays correct
+        private const val KEY_FOV = "fov_text"
+        private const val KEY_ZOOM = "zoom_text"
+        private const val KEY_SENSITIVITY = "sensitivity_text"
         // Rough budget for mic-buffer read latency + detection loop polling +
         // CameraX recorder startup — the trail's first fraction of a second
         // may already be gone by the time frames actually start landing.
@@ -117,7 +129,7 @@ class CaptureActivity : BaseActivity() {
         binding.btnAnalyze.isEnabled = false
 
         binding.btnArm.setOnClickListener { toggleArm() }
-        binding.etSensitivity.setText("70")
+        restoreCaptureFields()
 
         val cameraGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         audioPermissionGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -128,10 +140,51 @@ class CaptureActivity : BaseActivity() {
         if (toRequest.isNotEmpty()) permissionLauncher.launch(toRequest.toTypedArray())
     }
 
+    override fun onPause() {
+        saveCaptureFields()
+        super.onPause()
+    }
+
     override fun onDestroy() {
         shotDetector?.stop()
         autoStopJob?.cancel()
         super.onDestroy()
+    }
+
+    // ---- Capture-field persistence ----
+
+    private fun saveCaptureFields() {
+        val e = getSharedPreferences(FIELD_PREFS, MODE_PRIVATE).edit()
+        // Distance is stored in metres and re-rendered in the active unit on
+        // restore, so it survives an Imperial<->Metric switch unchanged.
+        binding.etTargetDistance.text.toString().toDoubleOrNull()?.let {
+            e.putFloat(KEY_DISTANCE_M, com.rfsat.vtb.ui.UnitsManager.inputDistanceToMeters(it).toFloat())
+        }
+        e.putString(KEY_FOV, binding.etHorizontalFov.text.toString())
+        e.putString(KEY_ZOOM, binding.etZoom.text.toString())
+        e.putString(KEY_SENSITIVITY, binding.etSensitivity.text.toString())
+        e.apply()
+    }
+
+    private fun restoreCaptureFields() {
+        val p = getSharedPreferences(FIELD_PREFS, MODE_PRIVATE)
+        val distM = p.getFloat(KEY_DISTANCE_M, -1f)
+        if (distM > 0f) {
+            val display = com.rfsat.vtb.ui.UnitsManager.displayDistance(distM.toDouble())
+            binding.etTargetDistance.setText(String.format("%.0f", display))
+        }
+        binding.etSensitivity.setText(p.getString(KEY_SENSITIVITY, "70"))
+        // FOV/zoom: restore as prefills, but ALSO seed lastAuto* with them so
+        // the live-camera observer still treats them as replaceable auto
+        // values — live capture keeps tracking real optics/zoom, while a
+        // value typed AFTER the camera bound (imported-clip workflow) still
+        // survives, exactly as the v12.1 stomping guard intended.
+        p.getString(KEY_FOV, null)?.takeIf { it.isNotBlank() }?.let {
+            binding.etHorizontalFov.setText(it); lastAutoFov = it
+        }
+        p.getString(KEY_ZOOM, null)?.takeIf { it.isNotBlank() }?.let {
+            binding.etZoom.setText(it); lastAutoZoom = it
+        }
     }
 
     private fun nudgeBoresight(dx: Double, dy: Double) =
@@ -162,8 +215,13 @@ class CaptureActivity : BaseActivity() {
             // Auto-FOV: fill the field from the real optics now and whenever
             // the zoom changes (a zoom change invalidates any manual value).
             // The field stays editable for imported clips from other devices.
-            camera.cameraInfo.zoomState.observe(this) {
-                CameraFovProvider.horizontalFovDeg(camera)?.let { fov ->
+            camera.cameraInfo.zoomState.observe(this) { zoomState ->
+                // v13.0: FOV field now holds the BASE (1x) FOV; the zoom
+                // lives in its own field. Effective FOV is recombined at
+                // analysis time — this keeps both numbers meaningful for
+                // imported clips, where the user knows "46 deg lens, shot
+                // at 3x" but not the folded-together effective angle.
+                CameraFovProvider.horizontalFovDeg(camera, zoomOverride = 1.0)?.let { fov ->
                     val txt = String.format("%.1f", fov)
                     val cur = binding.etHorizontalFov.text.toString()
                     // Only replace an EMPTY field or our own previous auto
@@ -175,6 +233,12 @@ class CaptureActivity : BaseActivity() {
                     }
                     lastAutoFov = txt
                 }
+                val zoomTxt = String.format("%.1f", (zoomState?.zoomRatio ?: 1.0f).toDouble())
+                val curZoom = binding.etZoom.text.toString()
+                if (curZoom.isBlank() || curZoom == lastAutoZoom) {
+                    binding.etZoom.setText(zoomTxt)
+                }
+                lastAutoZoom = zoomTxt
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -323,13 +387,31 @@ class CaptureActivity : BaseActivity() {
             Toast.makeText(this, "Camera FOV must be 10–120° (got ${"%.0f".format(fovDeg)}°).", Toast.LENGTH_LONG).show()
             return
         }
+        // Zoom the clip was RECORDED at. Auto-filled from the live camera;
+        // for imported videos (no optics metadata in the file) the user
+        // enters it manually — this was previously impossible and forced
+        // folding zoom into a hand-computed FOV. 0.5x covers ultrawide.
+        val zoom = binding.etZoom.text.toString().toDoubleOrNull() ?: 1.0
+        if (zoom !in 0.5..50.0) {
+            Logger.e(TAG, "Rejected analysis: zoom ${zoom}x outside 0.5-50")
+            Toast.makeText(this, "Zoom must be 0.5–50× (got ${"%.1f".format(zoom)}×).", Toast.LENGTH_LONG).show()
+            return
+        }
+        // Effective FOV: the angular width actually recorded. Correct optics,
+        // not linear division — 2*atan(tan(base/2)/zoom) — though the two
+        // agree within ~2% for narrow angles.
+        val effectiveFovDeg = Math.toDegrees(
+            2.0 * kotlin.math.atan(kotlin.math.tan(Math.toRadians(fovDeg / 2.0)) / zoom)
+        )
         val referenceBitmap = pendingReferenceBitmap
 
         setUiBusy(true)
 
         lifecycleScope.launch(Dispatchers.Default) {
             try {
-                Logger.i(TAG, "Analysis starting: uri=$uri shotBreak=${shotBreakOffsetS}s target=${targetDistanceYd}yd fov=${fovDeg}deg externalRef=${referenceBitmap != null}")
+                Logger.i(TAG, "Analysis starting: uri=$uri shotBreak=${shotBreakOffsetS}s target=${targetDistanceYd}yd " +
+                    "baseFov=${"%.1f".format(fovDeg)}deg zoom=${"%.1f".format(zoom)}x -> effFov=${"%.2f".format(effectiveFovDeg)}deg " +
+                    "externalRef=${referenceBitmap != null}")
 
                 val bullet = repo.getBullet()
                 val activeRifle = repo.getRifle()
@@ -387,7 +469,7 @@ class CaptureActivity : BaseActivity() {
                 val boresightYNorm = 0.5 + activeRifle.boresightOffsetYNorm
 
                 val calibration = TrailCalibration(
-                    horizontalFovDeg = fovDeg,
+                    horizontalFovDeg = effectiveFovDeg,
                     frameWidthPx = frameWidthPx,
                     frameHeightPx = frameHeightPx,
                     boresightPixelX = boresightXNorm * frameWidthPx,
@@ -410,6 +492,9 @@ class CaptureActivity : BaseActivity() {
                 AnalysisSession.windSamples = windSamples
                 AnalysisSession.adjustment = adjustment
                 AnalysisSession.targetDistanceYd = targetDistanceYd
+                AnalysisSession.baseFovDeg = fovDeg
+                AnalysisSession.cameraZoom = zoom
+                AnalysisSession.effectiveFovDeg = effectiveFovDeg
                 AnalysisSession.persist(this@CaptureActivity)
 
                 withContext(Dispatchers.Main) {

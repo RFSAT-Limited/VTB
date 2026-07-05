@@ -45,6 +45,11 @@ object AdjustmentCalculator {
     /** Below this the fit is statistically meaningless — using it would be
      *  worse than the zero-wind solution it replaces. */
     private const val MIN_USABLE_CONFIDENCE = 0.05
+    /** TESTING SWITCH (v13.0): while tuning the tracking pipeline the raw
+     *  low-confidence estimates are exactly the data of interest, so the
+     *  revert-to-zero behaviour hides the signal being debugged. Set back
+     *  to true before any release build — a <5% fit must not be dialled. */
+    private const val ENFORCE_MIN_CONFIDENCE = false
 
     /**
      * Computes the scope adjustment needed so the *next* shot lands on the
@@ -76,13 +81,19 @@ object AdjustmentCalculator {
                 "check camera FOV, boresight calibration and shot-break time. Falling back to a zero-wind solution."
             )
             crossMps = 0.0; vertMps = 0.0
-        } else if (windConf < MIN_USABLE_CONFIDENCE) {
+        } else if (ENFORCE_MIN_CONFIDENCE && windConf < MIN_USABLE_CONFIDENCE) {
             warnings.add(
                 "Tracking confidence too low (${(windConf * 100).toInt()}%) for a usable wind estimate — " +
                 "falling back to a zero-wind solution."
             )
             crossMps = 0.0; vertMps = 0.0
         } else {
+            if (windConf < MIN_USABLE_CONFIDENCE) {
+                warnings.add(
+                    "TESTING MODE: confidence ${(windConf * 100).toInt()}% is below the usable threshold " +
+                    "(${(MIN_USABLE_CONFIDENCE * 100).toInt()}%) — estimate shown anyway; do not dial from it."
+                )
+            }
             if (abs(crossMps) > STRONG_WIND_MPS) {
                 warnings.add(
                     "Estimated crosswind ${"%.1f".format(abs(crossMps))} m/s is unusually strong for " +

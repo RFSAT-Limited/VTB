@@ -37,8 +37,18 @@ import kotlin.math.atan
  */
 object CameraFovProvider {
 
+    /**
+     * @param zoomOverride when non-null, computes the FOV at THIS zoom
+     *   instead of the live camera zoom. Pass 1.0 to get the base (1x)
+     *   lens FOV — since v13.0 the capture screen shows base FOV and zoom
+     *   as separate fields and recombines them at analysis time.
+     */
     @androidx.annotation.OptIn(ExperimentalCamera2Interop::class)
-    fun horizontalFovDeg(camera: Camera, videoAspectLandscape: Double = 16.0 / 9.0): Double? {
+    fun horizontalFovDeg(
+        camera: Camera,
+        videoAspectLandscape: Double = 16.0 / 9.0,
+        zoomOverride: Double? = null
+    ): Double? {
         return try {
             val info = Camera2CameraInfo.from(camera.cameraInfo)
             val sensor: SizeF = info.getCameraCharacteristic(
@@ -47,8 +57,9 @@ object CameraFovProvider {
                 CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS) ?: return null
             val f = focals.firstOrNull()?.toDouble() ?: return null
             if (f <= 0.0) return null
-            val zoom = (camera.cameraInfo.zoomState.value?.zoomRatio ?: 1.0f)
-                .toDouble().coerceAtLeast(0.01)
+            val zoom = (zoomOverride
+                ?: (camera.cameraInfo.zoomState.value?.zoomRatio ?: 1.0f).toDouble())
+                .coerceAtLeast(0.01)
 
             var longMm = sensor.width.toDouble()   // sensor is landscape: width = long side
             var shortMm = sensor.height.toDouble()

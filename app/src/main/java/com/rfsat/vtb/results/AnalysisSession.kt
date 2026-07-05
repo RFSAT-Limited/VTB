@@ -19,18 +19,27 @@ object AnalysisSession {
     var windSamples: List<WindSample> = emptyList()
     var adjustment: ScopeAdjustment? = null
     var targetDistanceYd: Double = 100.0
+    // Camera calibration this analysis was computed with (v13.0) — recorded
+    // per analysis so saved results show the zoom/FOV they were derived
+    // from. 0.0 = payload from an older version (fields absent in Gson).
+    var baseFovDeg: Double = 0.0
+    var cameraZoom: Double = 0.0
+    var effectiveFovDeg: Double = 0.0
 
     /** Everything the Results screen needs, in one Gson-friendly bundle. */
     private data class Payload(
         val windSamples: List<WindSample>,
         val adjustment: ScopeAdjustment,
-        val targetDistanceYd: Double
+        val targetDistanceYd: Double,
+        val baseFovDeg: Double = 0.0,
+        val cameraZoom: Double = 0.0,
+        val effectiveFovDeg: Double = 0.0
     )
 
     /** Call after a successful analysis to survive app restarts. */
     fun persist(context: Context) {
         val adj = adjustment ?: return
-        val json = gson.toJson(Payload(windSamples, adj, targetDistanceYd))
+        val json = gson.toJson(Payload(windSamples, adj, targetDistanceYd, baseFovDeg, cameraZoom, effectiveFovDeg))
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY, json).apply()
     }
@@ -46,6 +55,9 @@ object AnalysisSession {
             windSamples = it.windSamples
             adjustment = it.adjustment
             targetDistanceYd = it.targetDistanceYd
+            baseFovDeg = it.baseFovDeg
+            cameraZoom = it.cameraZoom
+            effectiveFovDeg = it.effectiveFovDeg
         }
     }
 }

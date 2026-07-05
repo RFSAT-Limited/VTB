@@ -85,9 +85,17 @@
                 android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
         </LinearLayout>
         <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical">
-            <TextView android:text="FOV (°, auto)" android:textSize="12sp"
+            <TextView android:text="FOV (° @1×)" android:textSize="12sp"
                 android:layout_width="wrap_content" android:layout_height="wrap_content"/>
             <EditText android:id="@+id/etHorizontalFov" android:hint="10–120"
+                android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+        </LinearLayout>
+        <!-- Zoom the clip was recorded at. Auto-fills from the live camera;
+             for IMPORTED videos (no optics metadata) enter it manually. -->
+        <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical">
+            <TextView android:text="Zoom (×)" android:textSize="12sp"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+            <EditText android:id="@+id/etZoom" android:hint="1.0"
                 android:inputType="numberDecimal" android:layout_width="match_parent" android:layout_height="wrap_content"/>
         </LinearLayout>
     </LinearLayout>
