@@ -105,7 +105,7 @@ object TracerWindEstimator {
             // of sight, which sits sightHeightM above the bore origin.
             val yObs = xM * tan(calibration.pixelAngleY(o.pixelY))
             val yPredLos = yPredM - sightHeightM
-            pts.add(Point(t, xM, lag, zObs, yObs - yPredLos, o.conf))
+            pts.add(Point(t, xM, lag, zObs, yObs - yPredLos, o.confidence))
         }
         Logger.i(TAG, "Tracer fit input: ${pts.size} usable in-flight points " +
             "(of ${observations.size} observations, tof=${"%.2f".format(tofS)}s)")
