@@ -54,6 +54,13 @@ class ProfileActivity : BaseActivity() {
         binding.tvTableDropLabel.text = "Drop (${com.rfsat.vtb.ui.UnitsManager.offsetUnitLabel()})"
         refreshDropReadouts()
 
+        // Underline section titles for visibility (no XML attribute for
+        // underline; paint flags are the standard way).
+        listOf(binding.tvHeaderRifle, binding.tvHeaderBullet, binding.tvHeaderScope,
+               binding.tvHeaderDropCal, binding.tvHeaderSets).forEach {
+            it.paintFlags = it.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
+        }
+
         binding.btnSaveSet.setOnClickListener { promptSaveSet() }
         binding.btnLoadSet.setOnClickListener { loadSelectedSet() }
         binding.btnDeleteSet.setOnClickListener { deleteSelectedSet() }
@@ -210,7 +217,7 @@ class ProfileActivity : BaseActivity() {
             val pitch = com.rfsat.vtb.ballistics.BallisticsEngine.solveZeroPitch(bullet, atmosphere, rifle.zeroDistanceM, sightHeightM)
             val maxM = if (um.isImperial()) 300 * 0.9144 else 300.0
             val traj = com.rfsat.vtb.ballistics.BallisticsEngine.simulate(bullet, atmosphere, pitch, 0.0, maxM + 1.0)
-            val sb = StringBuilder("Predicted drop (zero ${"%.0f".format(um.displayDistance(rifle.zeroDistanceM))} ${um.distanceUnitLabel()}):\n")
+            val sb = StringBuilder("Predicted drop (zero ${"%.0f".format(um.displayDistance(rifle.zeroDistanceM))} ${um.distanceUnitLabel()}) / dial-up:\n")
             var step = 25
             while (step <= 300) {
                 val rM = if (um.isImperial()) step * 0.9144 else step.toDouble()
@@ -218,9 +225,14 @@ class ProfileActivity : BaseActivity() {
                 if (pt != null && pt.position.x >= rM - 2.0) {
                     val drop = sightHeightM - pt.position.y
                     val sign = if (drop >= 0) "-" else "+" // shooters read drop below LOS as negative
-                    sb.append("%4d %s: %s%.1f %s\n".format(
+                    // Elevation correction to dial: the angular size of the
+                    // drop at that range. atan, not the small-angle shortcut,
+                    // though they agree to <0.1% at rifle angles.
+                    val mrad = kotlin.math.atan(kotlin.math.abs(drop) / rM) * 1000.0
+                    sb.append("%4d %s: %s%.1f %s  %s%.2f MRAD\n".format(
                         step, um.distanceUnitLabel(), sign,
-                        um.displayOffset(kotlin.math.abs(drop)), um.offsetUnitLabel()))
+                        um.displayOffset(kotlin.math.abs(drop)), um.offsetUnitLabel(),
+                        if (drop >= 0) "+" else "-", mrad))
                 }
                 step += 25
             }

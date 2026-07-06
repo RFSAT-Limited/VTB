@@ -90,8 +90,7 @@ object AdjustmentCalculator {
         } else {
             if (windConf < MIN_USABLE_CONFIDENCE) {
                 warnings.add(
-                    "TESTING MODE: confidence ${(windConf * 100).toInt()}% is below the usable threshold " +
-                    "(${(MIN_USABLE_CONFIDENCE * 100).toInt()}%) — estimate shown anyway; do not dial from it."
+                    "Confidence ${(windConf * 100).toInt()}% below threshold (${(MIN_USABLE_CONFIDENCE * 100).toInt()}%)."
                 )
             }
             if (abs(crossMps) > STRONG_WIND_MPS) {
@@ -101,7 +100,7 @@ object AdjustmentCalculator {
                 )
             }
             if (windConf < 0.15) {
-                warnings.add("Low tracking confidence — treat this wind estimate with caution.")
+                warnings.add("Low confidence — use wind estimate with caution.")
             }
         }
 
