@@ -84,6 +84,7 @@ class ProfileActivity : BaseActivity() {
             etWeightGrains.setText(bullet.weightGrains.toString())
             etMuzzleVelocity.setText(bullet.muzzleVelocityFps.toString())
             etBallisticCoefficient.setText(bullet.ballisticCoefficientG1.toString())
+            cbTracer.isChecked = bullet.isTracer
 
             // Select the matching preset (or Custom) without clobbering fields.
             suppressPresetCallback = true
@@ -110,7 +111,8 @@ class ProfileActivity : BaseActivity() {
                 caliberDiameterIn = etCaliber.text.toString().toDoubleOrNull() ?: BulletProfile.DEFAULT.caliberDiameterIn,
                 weightGrains = etWeightGrains.text.toString().toDoubleOrNull() ?: BulletProfile.DEFAULT.weightGrains,
                 muzzleVelocityFps = etMuzzleVelocity.text.toString().toDoubleOrNull() ?: BulletProfile.DEFAULT.muzzleVelocityFps,
-                ballisticCoefficientG1 = etBallisticCoefficient.text.toString().toDoubleOrNull() ?: BulletProfile.DEFAULT.ballisticCoefficientG1
+                ballisticCoefficientG1 = etBallisticCoefficient.text.toString().toDoubleOrNull() ?: BulletProfile.DEFAULT.ballisticCoefficientG1,
+                isTracer = cbTracer.isChecked
             )
         )
         val unit = when (spinnerClickUnit.selectedItemPosition) {

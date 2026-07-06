@@ -435,19 +435,29 @@ class CaptureActivity : BaseActivity() {
                 // the tracking window AND the estimator's settle threshold, so
                 // both stay consistent with the zero calibration the solver uses.
                 val targetDistanceM = targetDistanceYd * 0.9144
+                val sightHeightM = AdjustmentCalculator.effectiveSightHeightM(activeRifle, scope)
                 val tofS = BallisticsEngine.zeroedTimeOfFlight(
                     bullet, atmosphere, targetDistanceM,
                     activeRifle.zeroDistanceM,
-                    AdjustmentCalculator.effectiveSightHeightM(activeRifle, scope)
+                    sightHeightM
                 )
                 val settleS = tofS * 1.2
-                // Track for settle + DRIFT_OBSERVATION_S of usable drift. The
-                // old fixed 2.0 s window starved the estimator at long range:
-                // at 300 m settle alone is ~2 s, leaving zero usable frames.
+                val tracer = bullet.isTracer
+                // Tracking window differs fundamentally by mode:
+                //  VAPOR — the wind signal is the trail's drift AFTER the
+                //    bullet has passed, so track settle + DRIFT_OBSERVATION_S.
+                //    (The old fixed 2.0 s window starved the estimator at long
+                //    range: at 300 m settle alone is ~2 s.)
+                //  TRACER — the wind signal is the bullet's own deflection
+                //    DURING flight; past impact the bright point is just the
+                //    strike flash, so track only tof + a small margin.
+                val trackWindowS = if (tracer) tofS + 0.3 else settleS + DRIFT_OBSERVATION_S
+                if (tracer) Logger.i(TAG, "TRACER mode: tracking bullet for ${"%.2f".format(trackWindowS)}s (tof=${"%.2f".format(tofS)}s)")
                 val extraction = TrailExtractor.extract(
                     localFile.absolutePath, shotBreakOffsetS,
-                    clipDurationAfterShotS = settleS + DRIFT_OBSERVATION_S,
-                    externalReferenceBitmap = referenceBitmap
+                    clipDurationAfterShotS = trackWindowS,
+                    externalReferenceBitmap = referenceBitmap,
+                    mode = if (tracer) TrailExtractor.Mode.TRACER else TrailExtractor.Mode.VAPOR
                 )
                 localFile.delete()
                 val observations = extraction.observations
@@ -476,11 +486,20 @@ class CaptureActivity : BaseActivity() {
                     boresightPixelY = boresightYNorm * frameHeightPx
                 )
 
-                val windSamples = WindEstimator.estimate(
-                    calibration, observations, targetDistanceM, settleTimeS = settleS
-                )
+                val windSamples = if (tracer) {
+                    com.rfsat.vtb.wind.TracerWindEstimator.estimate(
+                        calibration, observations, bullet, atmosphere,
+                        zeroDistanceM = activeRifle.zeroDistanceM,
+                        sightHeightM = sightHeightM,
+                        targetDistanceM = targetDistanceM
+                    )
+                } else {
+                    WindEstimator.estimate(
+                        calibration, observations, targetDistanceM, settleTimeS = settleS
+                    )
+                }
                 Logger.i(TAG, "Estimated ${windSamples.size} wind samples " +
-                    "(tof=${"%.2f".format(tofS)}s settle=${"%.2f".format(settleS)}s)")
+                    "(mode=${if (tracer) "TRACER" else "VAPOR"} tof=${"%.2f".format(tofS)}s settle=${"%.2f".format(settleS)}s)")
 
                 val adjustment = AdjustmentCalculator.computeAdjustment(
                     bullet, activeRifle, scope, atmosphere, targetDistanceYd, windSamples
@@ -495,6 +514,7 @@ class CaptureActivity : BaseActivity() {
                 AnalysisSession.baseFovDeg = fovDeg
                 AnalysisSession.cameraZoom = zoom
                 AnalysisSession.effectiveFovDeg = effectiveFovDeg
+                AnalysisSession.tracerMode = tracer
                 AnalysisSession.persist(this@CaptureActivity)
 
                 withContext(Dispatchers.Main) {

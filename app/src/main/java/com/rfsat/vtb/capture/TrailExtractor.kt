@@ -34,6 +34,22 @@ object TrailExtractor {
     private const val TAG = "TrailExtractor"
     private const val MAX_DECODE_WIDTH = 640
     private const val GRADIENT_WEIGHT = 2.0
+    /** Tracer mode: weight on the red-dominance delta term. */
+    private const val RED_WEIGHT = 1.5
+    /** Tracer mode: a pyrotechnic point is BRIGHT — a much higher bar than
+     *  the faint refraction signature, which also rejects most sky noise. */
+    private const val TRACER_SCORE_THRESHOLD = 48.0
+
+    /**
+     * VAPOR — the refraction wake: |luminance delta| + weighted |gradient
+     *   delta|, both signs, diffuse centroid (the original detector).
+     * TRACER (v14.0) — the burning pyrotechnic element: POSITIVE luminance
+     *   delta plus a red-dominance delta term (tracers burn red/orange;
+     *   strontium/magnesium compositions). Scores are squared in the
+     *   centroid weighting so the compact saturated point dominates over
+     *   any residual diffuse smoke it also produces.
+     */
+    enum class Mode { VAPOR, TRACER }
 
     data class ExtractionResult(
         val observations: List<PixelObservation>,
@@ -47,8 +63,10 @@ object TrailExtractor {
         clipDurationAfterShotS: Double = 2.0,
         sampleIntervalMs: Long = 33,
         scoreThreshold: Double = 16.0,
-        externalReferenceBitmap: Bitmap? = null
+        externalReferenceBitmap: Bitmap? = null,
+        mode: Mode = Mode.VAPOR
     ): ExtractionResult {
+        val threshold = if (mode == Mode.TRACER) TRACER_SCORE_THRESHOLD else scoreThreshold
         val retriever = MediaMetadataRetriever()
         var scaledExternalReference: Bitmap? = null
         try {
@@ -73,11 +91,14 @@ object TrailExtractor {
             val h = (srcH * scale).toInt()
             Logger.i(TAG, "Source ${srcW}x${srcH}, analyzing at ${w}x${h} (scale=${"%.2f".format(scale)})")
 
-            // Reference (undisturbed background) luminance + gradient maps.
+            // Reference (undisturbed background) luminance + gradient maps
+            // (+ red-dominance map in tracer mode).
             val refLum: DoubleArray
+            var refRed: DoubleArray? = null
             if (externalReferenceBitmap != null) {
                 scaledExternalReference = Bitmap.createScaledBitmap(externalReferenceBitmap, w, h, true)
                 refLum = luminance(scaledExternalReference)
+                if (mode == Mode.TRACER) refRed = redDominance(scaledExternalReference)
                 scaledExternalReference.recycle(); scaledExternalReference = null
                 Logger.i(TAG, "Using external pre-arm reference frame (auto-trigger mode)")
             } else {
@@ -88,9 +109,11 @@ object TrailExtractor {
                     return ExtractionResult(emptyList(), w, h)
                 }
                 refLum = luminance(refFrame)
+                if (mode == Mode.TRACER) refRed = redDominance(refFrame)
                 refFrame.recycle()
             }
-            val refGrad = gradientMagnitude(refLum, w, h)
+            // Gradient maps only matter for the refraction signature.
+            val refGrad = if (mode == Mode.VAPOR) gradientMagnitude(refLum, w, h) else DoubleArray(0)
 
             val results = mutableListOf<PixelObservation>()
             var lastX = w / 2.0
@@ -108,7 +131,8 @@ object TrailExtractor {
                     if (frame != null) {
                         framesRead++
                         val lum = luminance(frame)
-                        val grad = gradientMagnitude(lum, w, h)
+                        val red = if (mode == Mode.TRACER) redDominance(frame) else null
+                        val grad = if (mode == Mode.VAPOR) gradientMagnitude(lum, w, h) else DoubleArray(0)
                         val x0 = (lastX - searchRadius).toInt().coerceIn(1, w - 2)
                         val x1 = (lastX + searchRadius).toInt().coerceIn(1, w - 2)
                         val y0 = (lastY - searchRadius).toInt().coerceIn(1, h - 2)
@@ -119,10 +143,21 @@ object TrailExtractor {
                             val rowOff = y * w
                             for (x in x0..x1) {
                                 val idx = rowOff + x
-                                val score = abs(lum[idx] - refLum[idx]) +
-                                    GRADIENT_WEIGHT * abs(grad[idx] - refGrad[idx])
-                                if (score > scoreThreshold) {
-                                    sumW += score; sumWx += score * x; sumWy += score * y
+                                val score = if (mode == Mode.TRACER) {
+                                    // Positive brightness rise + red-dominance rise:
+                                    // the burning element, not shadows or smoke.
+                                    (lum[idx] - refLum[idx]).coerceAtLeast(0.0) +
+                                        RED_WEIGHT * (red!![idx] - refRed!![idx]).coerceAtLeast(0.0)
+                                } else {
+                                    abs(lum[idx] - refLum[idx]) +
+                                        GRADIENT_WEIGHT * abs(grad[idx] - refGrad[idx])
+                                }
+                                if (score > threshold) {
+                                    // Squared weighting in tracer mode: the compact
+                                    // saturated point must dominate the centroid over
+                                    // any co-detected smoke haze.
+                                    val wgt = if (mode == Mode.TRACER) score * score else score
+                                    sumW += wgt; sumWx += wgt * x; sumWy += wgt * y
                                 }
                             }
                         }
@@ -130,7 +165,8 @@ object TrailExtractor {
                             val px = sumWx / sumW
                             val py = sumWy / sumW
                             lastX = px; lastY = py
-                            val confidence = (sumW / (500.0 * (x1 - x0 + 1) * (y1 - y0 + 1))).coerceIn(0.0, 1.0)
+                            val confNorm = if (mode == Mode.TRACER) 255.0 * 255.0 else 500.0
+                            val confidence = (sumW / (confNorm * (x1 - x0 + 1) * (y1 - y0 + 1))).coerceIn(0.0, 1.0)
                             results.add(PixelObservation(tS - shotBreakOffsetS, px, py, confidence))
                         }
                     } else framesFailed++
@@ -148,7 +184,7 @@ object TrailExtractor {
             }
             Logger.i(TAG, "Extraction done: $framesRead frames read, $framesFailed failed, ${results.size} trail points")
             if (results.isEmpty() && framesRead > 0) {
-                Logger.w(TAG, "Frames decoded fine but nothing exceeded score threshold $scoreThreshold — trail too faint, wrong shot-break time, or camera moved between reference and shot")
+                Logger.w(TAG, "Frames decoded fine but nothing exceeded score threshold $threshold — trail too faint, wrong shot-break time, or camera moved between reference and shot")
             }
             return ExtractionResult(results, w, h)
         } catch (oom: OutOfMemoryError) {
@@ -199,6 +235,26 @@ object TrailExtractor {
             val g = (p shr 8) and 0xFF
             val b = p and 0xFF
             out[i] = 0.299 * r + 0.587 * g + 0.114 * b
+        }
+        return out
+    }
+
+    /** Red-dominance per pixel: max(0, R - max(G, B)). A burning tracer
+     *  element is strongly red/orange-saturated, which separates it from
+     *  white muzzle smoke, sky, and sun glints far better than brightness
+     *  alone. */
+    private fun redDominance(bitmap: Bitmap): DoubleArray {
+        val w = bitmap.width; val h = bitmap.height
+        val pixels = IntArray(w * h)
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+        val out = DoubleArray(w * h)
+        for (i in pixels.indices) {
+            val p = pixels[i]
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+            val d = r - if (g > b) g else b
+            out[i] = if (d > 0) d.toDouble() else 0.0
         }
         return out
     }

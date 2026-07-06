@@ -25,6 +25,8 @@ object AnalysisSession {
     var baseFovDeg: Double = 0.0
     var cameraZoom: Double = 0.0
     var effectiveFovDeg: Double = 0.0
+    /** true when this analysis tracked a tracer round (v14.0). */
+    var tracerMode: Boolean = false
 
     /** Everything the Results screen needs, in one Gson-friendly bundle. */
     private data class Payload(
@@ -33,13 +35,14 @@ object AnalysisSession {
         val targetDistanceYd: Double,
         val baseFovDeg: Double = 0.0,
         val cameraZoom: Double = 0.0,
-        val effectiveFovDeg: Double = 0.0
+        val effectiveFovDeg: Double = 0.0,
+        val tracerMode: Boolean = false
     )
 
     /** Call after a successful analysis to survive app restarts. */
     fun persist(context: Context) {
         val adj = adjustment ?: return
-        val json = gson.toJson(Payload(windSamples, adj, targetDistanceYd, baseFovDeg, cameraZoom, effectiveFovDeg))
+        val json = gson.toJson(Payload(windSamples, adj, targetDistanceYd, baseFovDeg, cameraZoom, effectiveFovDeg, tracerMode))
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY, json).apply()
     }
@@ -58,6 +61,7 @@ object AnalysisSession {
             baseFovDeg = it.baseFovDeg
             cameraZoom = it.cameraZoom
             effectiveFovDeg = it.effectiveFovDeg
+            tracerMode = it.tracerMode
         }
     }
 }

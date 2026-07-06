@@ -56,6 +56,13 @@
             <TextView android:text="BC (G1)" android:textSize="12sp" android:layout_width="84dp" android:layout_height="wrap_content" android:layout_gravity="center_vertical"/>
             <EditText android:id="@+id/etBallisticCoefficient" android:hint="G1" android:inputType="numberDecimal" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
         </LinearLayout>
+        <!-- Tracer rounds: the bright pyrotechnic point is tracked instead of
+             the vapor trail, and wind is inferred from the BULLET's lateral
+             lag deflection — a different detector AND a different estimator. -->
+        <CheckBox android:id="@+id/cbTracer"
+            android:text="Tracer round (track bullet, not vapor trail)"
+            android:textSize="14sp"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
 
         <TextView android:text="@string/scope_profile" android:textStyle="bold" android:textSize="18sp"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:layout_marginBottom="8dp"/>

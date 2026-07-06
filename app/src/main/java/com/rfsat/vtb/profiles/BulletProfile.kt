@@ -12,7 +12,15 @@ data class BulletProfile(
     val ballisticCoefficientG1: Double = 0.139,
     /** Optional local calibration multiplier on drag; 1.0 = trust the BC as given.
      *  Tune this against your own chronograph/drop data if the model runs fast or slow. */
-    val dragCalibrationFactor: Double = 1.0
+    val dragCalibrationFactor: Double = 1.0,
+    /** Tracer round (v14.0): the pyrotechnic point is tracked instead of the
+     *  vapor trail, and crosswind is inferred from the BULLET's lag
+     *  deflection rather than trail drift. Gson leaves this false on
+     *  profiles saved by older versions. NOTE: a burning tracer loses mass
+     *  as it flies, so its published BC drifts over the flight — treat the
+     *  BC as approximate and lean on dragCalibrationFactor if drop data
+     *  disagrees. */
+    val isTracer: Boolean = false
 ) {
     val massKg: Double get() = weightGrains * 0.00006479891
     val diameterM: Double get() = caliberDiameterIn * 0.0254

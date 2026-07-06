@@ -85,13 +85,14 @@ class ResultsActivity : BaseActivity() {
     /** Camera calibration this analysis used, e.g. " · 46.1° @3.0× → 15.9°".
      *  Empty for payloads saved before v13.0 (fields deserialize to 0). */
     private fun cameraSuffix(): String {
-        if (AnalysisSession.baseFovDeg <= 0.0 || AnalysisSession.cameraZoom <= 0.0) return ""
+        val tracer = if (AnalysisSession.tracerMode) " · TRACER" else ""
+        if (AnalysisSession.baseFovDeg <= 0.0 || AnalysisSession.cameraZoom <= 0.0) return tracer
         val base = fmt1(AnalysisSession.baseFovDeg)
         val zoom = fmt1(AnalysisSession.cameraZoom)
-        return if (AnalysisSession.cameraZoom == 1.0)
+        return (if (AnalysisSession.cameraZoom == 1.0)
             " · FOV $base°"
         else
-            " · FOV $base° @${zoom}× → ${fmt1(AnalysisSession.effectiveFovDeg)}°"
+            " · FOV $base° @${zoom}× → ${fmt1(AnalysisSession.effectiveFovDeg)}°") + tracer
     }
 
     private fun fmt1(v: Double) = String.format("%.1f", v)
