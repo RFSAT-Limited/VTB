@@ -100,6 +100,18 @@
         </LinearLayout>
     </LinearLayout>
 
+    <!-- v17.0: range conditions — auto from phone sensors on entry, or from
+         a paired Kestrel on demand. Used by the drag model at analysis. -->
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/tvEnvStatus"
+            android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+            android:textSize="11sp"/>
+        <Button android:id="@+id/btnKestrel" android:text="Kestrel"
+            android:textSize="11sp"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"/>
+    </LinearLayout>
+
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
         android:orientation="vertical" android:layout_marginHorizontal="8dp">
         <TextView android:text="Shot break (s)" android:textSize="12sp"

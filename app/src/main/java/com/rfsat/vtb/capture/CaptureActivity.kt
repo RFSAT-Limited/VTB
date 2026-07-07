@@ -75,6 +75,7 @@ class CaptureActivity : BaseActivity() {
         private const val KEY_FOV = "fov_text"
         private const val KEY_ZOOM = "zoom_text"
         private const val KEY_SENSITIVITY = "sensitivity_text"
+        private const val REQ_BT_CONNECT = 41
         // Rough budget for mic-buffer read latency + detection loop polling +
         // CameraX recorder startup — the trail's first fraction of a second
         // may already be gone by the time frames actually start landing.
@@ -131,6 +132,15 @@ class CaptureActivity : BaseActivity() {
         binding.btnArm.setOnClickListener { toggleArm() }
         restoreCaptureFields()
 
+        // v17.0: range conditions. Phone sensors auto-refresh on entry
+        // (barometer on the S24; ambient temp/humidity where the device has
+        // them); a paired Kestrel can override on demand.
+        binding.tvEnvStatus.text = com.rfsat.vtb.environment.EnvironmentManager.describe()
+        com.rfsat.vtb.environment.EnvironmentManager.refreshFromPhoneSensors(this) {
+            binding.tvEnvStatus.text = com.rfsat.vtb.environment.EnvironmentManager.describe()
+        }
+        binding.btnKestrel.setOnClickListener { readKestrel() }
+
         val cameraGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         audioPermissionGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         if (cameraGranted) startCamera()
@@ -149,6 +159,38 @@ class CaptureActivity : BaseActivity() {
         shotDetector?.stop()
         autoStopJob?.cancel()
         super.onDestroy()
+    }
+
+    // ---- Range conditions (v17.0) ----
+
+    private fun readKestrel() {
+        if (android.os.Build.VERSION.SDK_INT >= 31 &&
+            checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.BLUETOOTH_CONNECT), REQ_BT_CONNECT)
+            return
+        }
+        val device = com.rfsat.vtb.environment.KestrelProvider.findPairedKestrel()
+        if (device == null) {
+            Toast.makeText(this, "No paired Kestrel found — pair it in Android Bluetooth settings first.", Toast.LENGTH_LONG).show()
+            return
+        }
+        binding.btnKestrel.isEnabled = false
+        binding.tvEnvStatus.text = "Reading Kestrel…"
+        com.rfsat.vtb.environment.KestrelProvider.read(this, device) { got ->
+            binding.btnKestrel.isEnabled = true
+            binding.tvEnvStatus.text = com.rfsat.vtb.environment.EnvironmentManager.describe()
+            if (!got) Toast.makeText(this,
+                "Kestrel connected but no readable environment values — its GATT layout was logged (Log tab) for exact wiring.",
+                Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_BT_CONNECT &&
+            grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) readKestrel()
     }
 
     // ---- Capture-field persistence ----
@@ -416,7 +458,8 @@ class CaptureActivity : BaseActivity() {
                 val bullet = repo.getBullet()
                 val activeRifle = repo.getRifle()
                 val scope = repo.getScope()
-                val atmosphere = Atmosphere() // TODO: wire up a range-conditions input screen
+                val atmosphere = com.rfsat.vtb.environment.EnvironmentManager.current.atmosphere
+                Logger.i(TAG, "Analysis environment: ${com.rfsat.vtb.environment.EnvironmentManager.describe()}")
 
                 // Copy the source (recorded or imported) into app cache and
                 // analyze from a plain file path — content:// Uris can crash
