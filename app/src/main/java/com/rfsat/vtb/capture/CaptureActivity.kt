@@ -537,9 +537,38 @@ class CaptureActivity : BaseActivity() {
                         targetDistanceM = targetDistanceM
                     )
                 } else {
-                    WindEstimator.estimate(
+                    // v17.3 (user choice): spread the drift timeline across
+                    // the flight path. Each sample's observation time is
+                    // mapped PROPORTIONALLY into the bullet's flight window
+                    // [0, tof], then through the drag-decayed trajectory —
+                    // so the first drift estimate charts at the muzzle, the
+                    // last at the target, and the spacing in between carries
+                    // the speed decay (late-flight distances compress, as
+                    // the slowing bullet covers less ground per second).
+                    // DISPLAY convention only: the x-position says when in
+                    // the drift observation the estimate was taken, projected
+                    // onto the path — magnitudes still come from the trail
+                    // centroid at its effective distance.
+                    val pitch = BallisticsEngine.solveZeroPitch(
+                        bullet, atmosphere, activeRifle.zeroDistanceM, sightHeightM
+                    )
+                    val traj = BallisticsEngine.simulate(
+                        bullet, atmosphere, pitch, 0.0, targetDistanceM + 1.0
+                    )
+                    val raw = WindEstimator.estimate(
                         calibration, observations, targetDistanceM, settleTimeS = settleS
                     )
+                    if (raw.isEmpty()) raw else {
+                        val t0 = raw.minOf { it.timeS }
+                        val t1 = raw.maxOf { it.timeS }
+                        val span = t1 - t0
+                        raw.map { s ->
+                            val tFlight =
+                                if (span < 1e-6) tofS * 0.5 // lone sample: mid-path
+                                else tofS * (s.timeS - t0) / span
+                            s.copy(downrangeM = BallisticsEngine.downrangeAtTime(traj, tFlight))
+                        }
+                    }
                 }
                 Logger.i(TAG, "Estimated ${windSamples.size} wind samples " +
                     "(mode=${if (tracer) "TRACER" else "VAPOR"} tof=${"%.2f".format(tofS)}s settle=${"%.2f".format(settleS)}s)")
