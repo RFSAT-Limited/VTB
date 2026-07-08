@@ -190,6 +190,28 @@ object BallisticsEngine {
      * above the bore, with no wind. Simple bisection — robust, and this
      * only runs once per profile change.
      */
+    /**
+     * Bullet's downrange distance at time tS along a simulated trajectory —
+     * i.e. the integral of the drag-decayed speed (v17.2, per user: map the
+     * wind chart's time axis to distance from the barrel). Clamped to the
+     * trajectory: before launch it's 0; after the bullet arrives/lands the
+     * speed is 0, so the distance saturates at the final point.
+     */
+    fun downrangeAtTime(traj: List<TrajectoryPoint>, tS: Double): Double {
+        if (traj.isEmpty()) return 0.0
+        if (tS <= traj.first().timeS) return traj.first().position.x
+        if (tS >= traj.last().timeS) return traj.last().position.x
+        var lo = 0; var hi = traj.size - 1
+        while (hi - lo > 1) {
+            val mid = (lo + hi) / 2
+            if (traj[mid].timeS <= tS) lo = mid else hi = mid
+        }
+        val a = traj[lo]; val b = traj[hi]
+        val dt = b.timeS - a.timeS
+        if (dt < 1e-9) return a.position.x
+        return a.position.x + (tS - a.timeS) / dt * (b.position.x - a.position.x)
+    }
+
     fun solveZeroPitch(
         bullet: BulletProfile,
         atmosphere: Atmosphere,

@@ -58,12 +58,25 @@ object WindEstimator {
      *   centroid motion is trail FORMATION, not wind drift. Pass ~1.2x the
      *   expected time of flight.
      */
+    /**
+     * @param timeToDownrangeM v17.2: maps a sample's observation time to the
+     *   bullet's downrange distance at that time (drag-decayed speed
+     *   integrated — BallisticsEngine.downrangeAtTime), used as the sample's
+     *   chart index. Since drift samples are observed AFTER the flight, the
+     *   mapping saturates at the target distance — the honest reading: the
+     *   trail's drift measures the path-average wind, charted at the
+     *   terminal distance. Null keeps the legacy mid-range effective index.
+     *   NOTE: this changes ONLY the chart index; the wind MAGNITUDE always
+     *   uses the effective centroid distance (dEff) — the drifting trail
+     *   centroid physically sits mid-path regardless of how we index it.
+     */
     fun estimate(
         calibration: TrailCalibration,
         observations: List<PixelObservation>,
         targetDistanceM: Double,
         settleTimeS: Double,
-        minConfidence: Double = 0.02
+        minConfidence: Double = 0.02,
+        timeToDownrangeM: ((Double) -> Double)? = null
     ): List<WindSample> {
         val obs = observations
             .filter { it.confidence >= minConfidence && it.timestampS >= settleTimeS }
@@ -94,7 +107,7 @@ object WindEstimator {
             out.add(
                 WindSample(
                     timeS = tc,
-                    downrangeM = dEff,
+                    downrangeM = timeToDownrangeM?.invoke(tc) ?: dEff,
                     crosswindMps = dEff * fx.slope,
                     verticalWindMps = dEff * fy.slope,
                     confidence = (meanConf * fx.quality * fy.quality).coerceIn(0.0, 1.0)
