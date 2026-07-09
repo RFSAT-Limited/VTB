@@ -76,18 +76,15 @@ class ResultsActivity : BaseActivity() {
                 adjustment.warnings.joinToString("\n") { "\u26A0 $it" }
         }
 
-        // Chart x-axis (v17.1): DISTANCE from the rifle, always — per user
-        // request. In vapor mode every drift sample refers to the same
-        // effective distance (the trail centroid, ~half the range), so the
-        // chart honestly shows the estimate spread stacked at that distance;
-        // tracer mode gives a true range-resolved profile. WindChartView
-        // pads a degenerate x-range, so the single-x case renders fine.
+        // Chart x-axis (v17.4): reverted to TIME after shot, per user —
+        // the drift timeline is the honest axis for vapor samples, and
+        // tracer samples' in-flight times are equally physical.
         val samples = AnalysisSession.windSamples
         binding.windChart.setSeries(
-            samples.sortedBy { it.downrangeM }
-                .map { UnitsManager.displayDistance(it.downrangeM) to UnitsManager.displaySpeed(it.crosswindMps) }
+            samples.sortedBy { it.timeS }
+                .map { it.timeS to UnitsManager.displaySpeed(it.crosswindMps) }
         )
-        binding.windChart.title = "Crosswind vs. distance ($dU / $sU, +right)"
+        binding.windChart.title = "Crosswind vs. s after shot ($sU, +right)"
 
         // v16.0: wind transfer — the measured wind is a property of the air,
         // so it can drive a correction for ANY saved rifle/bullet/scope set.
