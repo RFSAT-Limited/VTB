@@ -58,6 +58,38 @@ class MainActivity : BaseActivity() {
         }
 
         setupBottomNav(com.rfsat.vtb.R.id.nav_home)
+        maybeShowCrashReport()
+    }
+
+    /** v19.1: if the previous launch died, show the recorded stack in a
+     *  shareable dialog — crash diagnosis without adb. Dismiss clears the
+     *  record (which also re-enables stored-analysis restore next launch). */
+    private fun maybeShowCrashReport() {
+        val prefs = getSharedPreferences(com.rfsat.vtb.VtbApp.CRASH_PREFS, MODE_PRIVATE)
+        val stack = prefs.getString(com.rfsat.vtb.VtbApp.KEY_STACK, null) ?: return
+        val tv = android.widget.TextView(this).apply {
+            typeface = android.graphics.Typeface.MONOSPACE
+            textSize = 10f
+            setPadding(32, 16, 32, 0)
+            text = stack
+            setTextIsSelectable(true)
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(tv) }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("VTB crashed on the previous launch")
+            .setView(scroll)
+            .setPositiveButton("Share") { _, _ ->
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_SUBJECT, "VTB crash report")
+                    putExtra(Intent.EXTRA_TEXT, stack)
+                }
+                startActivity(Intent.createChooser(send, "Share crash report"))
+                prefs.edit().clear().apply()
+            }
+            .setNegativeButton("Dismiss") { _, _ -> prefs.edit().clear().apply() }
+            .setCancelable(false)
+            .show()
     }
 
     override fun onResume() {

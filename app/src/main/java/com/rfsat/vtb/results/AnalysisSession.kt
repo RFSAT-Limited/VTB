@@ -128,17 +128,33 @@ object AnalysisSession {
         if (adjustment != null) return
         val json = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY, null) ?: return
-        // runCatching: a payload written by an older app version may not
-        // match the current data classes — treat it as absent, don't crash.
-        runCatching { gson.fromJson(json, Payload::class.java) }.getOrNull()?.let {
-            windSamples = it.windSamples
-            adjustment = it.adjustment.let(::migrateLegacyWarnings)
-            targetDistanceYd = it.targetDistanceYd
-            baseFovDeg = it.baseFovDeg
-            cameraZoom = it.cameraZoom
-            effectiveFovDeg = it.effectiveFovDeg
-            tracerMode = it.tracerMode
-            muzzleVelocityMps = it.muzzleVelocityMps
+        // v19.1: the WHOLE restore is guarded, not just the parse. Gson
+        // builds Kotlin data classes via Unsafe (no constructor), so fields
+        // missing from stored JSON come back NULL even when the Kotlin type
+        // is non-null — the previous code assigned them OUTSIDE the guard,
+        // so a partial payload crashed at first field use, i.e. at app
+        // startup, before the crash handler existed. Belt and braces:
+        // explicit null checks (real, despite the non-null types) plus
+        // runCatching around everything.
+        runCatching {
+            val p = gson.fromJson(json, Payload::class.java)
+            @Suppress("SENSELESS_COMPARISON")
+            if (p == null || p.windSamples == null || p.adjustment == null ||
+                p.adjustment.warnings == null || p.adjustment.impactOffsetMAtTarget == null
+            ) {
+                com.rfsat.vtb.log.Logger.w("AnalysisSession", "Stored payload incomplete — ignoring it")
+                return
+            }
+            windSamples = p.windSamples
+            adjustment = migrateLegacyWarnings(p.adjustment)
+            targetDistanceYd = p.targetDistanceYd
+            baseFovDeg = p.baseFovDeg
+            cameraZoom = p.cameraZoom
+            effectiveFovDeg = p.effectiveFovDeg
+            tracerMode = p.tracerMode
+            muzzleVelocityMps = p.muzzleVelocityMps
+        }.onFailure {
+            com.rfsat.vtb.log.Logger.w("AnalysisSession", "Stored payload unreadable — ignoring it: ${it.message}")
         }
     }
 }
