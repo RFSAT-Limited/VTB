@@ -17,6 +17,18 @@ class MainActivity : BaseActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // v19.3: report FIRST, then initialize. Previously this was the
+        // LAST line of onCreate — so a crash anywhere in the screen's own
+        // startup recorded a stack that no launch could ever display.
+        // Everything after this line is guarded: if init throws, the Home
+        // screen still comes up (degraded) and shows THAT stack too.
+        maybeShowCrashReport()
+        runCatching { initHome() }.onFailure { showStack("VTB startup error", 
+            "thread main\n" + android.util.Log.getStackTraceString(it)) }
+    }
+
+    private fun initHome() {
+
         val repo = ProfileRepository(this)
 
         refreshSummary(repo)
@@ -60,6 +72,43 @@ class MainActivity : BaseActivity() {
         setupBottomNav(com.rfsat.vtb.R.id.nav_home)
     }
 
+    /** v19.1/19.3: if the previous launch died, show the recorded stack in
+     *  a shareable dialog — crash diagnosis without adb. Dismiss clears the
+     *  record (which also re-enables stored-analysis restore next launch). */
+    private fun maybeShowCrashReport() {
+        val prefs = getSharedPreferences(com.rfsat.vtb.VtbApp.CRASH_PREFS, MODE_PRIVATE)
+        val stack = prefs.getString(com.rfsat.vtb.VtbApp.KEY_STACK, null) ?: return
+        prefs.edit().clear().apply() // consumed — a fresh crash re-records
+        showStack("VTB crashed on the previous launch", stack)
+    }
+
+    private fun showStack(title: String, stack: String) {
+        runCatching {
+            val tv = android.widget.TextView(this).apply {
+                typeface = android.graphics.Typeface.MONOSPACE
+                textSize = 10f
+                setPadding(32, 16, 32, 0)
+                text = stack
+                setTextIsSelectable(true)
+            }
+            val scroll = android.widget.ScrollView(this).apply { addView(tv) }
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(scroll)
+                .setPositiveButton("Share") { _, _ ->
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_SUBJECT, "VTB crash report")
+                        putExtra(Intent.EXTRA_TEXT, stack)
+                    }
+                    startActivity(Intent.createChooser(send, "Share crash report"))
+                }
+                .setNegativeButton("Dismiss", null)
+                .setCancelable(false)
+                .show()
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         refreshSummary(ProfileRepository(this))
@@ -73,6 +122,11 @@ class MainActivity : BaseActivity() {
         binding.tvSummary.text = getString(
             com.rfsat.vtb.R.string.active_profile_summary,
             rifle.name, bullet.name, scope.name
-        )
+        ) + "\nVTB ${com.rfsat.vtb.BuildConfig.VERSION_NAME} " +
+            "(build ${com.rfsat.vtb.BuildConfig.VERSION_CODE}, ${com.rfsat.vtb.BuildConfig.BUILD_TYPE})"
+        // ^ v19.5 build fingerprint: after a chain of stale-artifact installs
+        // (compile failures abort CI before assembleRelease, so a red run
+        // yields NO new release APK), the installed binary must identify
+        // itself — the icon label and this line together end any ambiguity. + "\nVTB ${com.rfsat.vtb.BuildConfig.VERSION_NAME} (build ${com.rfsat.vtb.BuildConfig.VERSION_CODE}, ${com.rfsat.vtb.BuildConfig.BUILD_TYPE})"
     }
 }

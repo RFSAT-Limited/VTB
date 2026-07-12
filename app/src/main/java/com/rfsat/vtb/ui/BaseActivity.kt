@@ -8,9 +8,33 @@ import com.rfsat.vtb.R
 
 open class BaseActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        ThemeManager.apply(this)
-        super.onCreate(savedInstanceState)
-        enterFullScreen()
+        runCatching { ThemeManager.apply(this) } // v19.3: never let shared
+        super.onCreate(savedInstanceState)       // startup code kill a screen
+        runCatching { enterFullScreen() }
+    }
+
+    /**
+     * Themed replacement for Toast (v18.1). System Toasts render in the
+     * OS palette — bright white text regardless of the app theme, which in
+     * the night modes destroys the very dark adaptation those themes
+     * protect. This Snackbar is recoloured from the ACTIVE theme:
+     * background = colorSurface, text = textColorPrimary.
+     */
+    fun notifyUser(message: String) {
+        val root = findViewById<android.view.View>(android.R.id.content) ?: return
+        val sb = com.google.android.material.snackbar.Snackbar.make(
+            root, message, com.google.android.material.snackbar.Snackbar.LENGTH_LONG
+        )
+        fun attrColor(attr: Int, fallback: Int): Int {
+            val tv = android.util.TypedValue()
+            return if (theme.resolveAttribute(attr, tv, true)) tv.data else fallback
+        }
+        sb.view.setBackgroundColor(
+            attrColor(com.google.android.material.R.attr.colorSurface, 0xFF202020.toInt())
+        )
+        sb.setTextColor(attrColor(android.R.attr.textColorPrimary, 0xFFF2F7F0.toInt()))
+        sb.setTextMaxLines(4)
+        sb.show()
     }
 
     /** Bars can transiently reappear (keyboard dismiss, edge swipe, dialog)
