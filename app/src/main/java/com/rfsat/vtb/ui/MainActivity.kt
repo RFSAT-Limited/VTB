@@ -122,6 +122,11 @@ class MainActivity : BaseActivity() {
         binding.tvSummary.text = getString(
             com.rfsat.vtb.R.string.active_profile_summary,
             rifle.name, bullet.name, scope.name
-        ) + "\nVTB ${com.rfsat.vtb.BuildConfig.VERSION_NAME} (build ${com.rfsat.vtb.BuildConfig.VERSION_CODE}, ${com.rfsat.vtb.BuildConfig.BUILD_TYPE})"
+        ) + "\nVTB ${com.rfsat.vtb.BuildConfig.VERSION_NAME} " +
+            "(build ${com.rfsat.vtb.BuildConfig.VERSION_CODE}, ${com.rfsat.vtb.BuildConfig.BUILD_TYPE})"
+        // ^ v19.5 build fingerprint: after a chain of stale-artifact installs
+        // (compile failures abort CI before assembleRelease, so a red run
+        // yields NO new release APK), the installed binary must identify
+        // itself — the icon label and this line together end any ambiguity. + "\nVTB ${com.rfsat.vtb.BuildConfig.VERSION_NAME} (build ${com.rfsat.vtb.BuildConfig.VERSION_CODE}, ${com.rfsat.vtb.BuildConfig.BUILD_TYPE})"
     }
 }
