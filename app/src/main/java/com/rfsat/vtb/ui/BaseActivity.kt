@@ -8,9 +8,9 @@ import com.rfsat.vtb.R
 
 open class BaseActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        runCatching { ThemeManager.apply(this) } // v19.3: never let shared
-        super.onCreate(savedInstanceState)       // startup code kill a screen
-        runCatching { enterFullScreen() }
+        ThemeManager.apply(this)
+        super.onCreate(savedInstanceState)
+        enterFullScreen()
     }
 
     /** Bars can transiently reappear (keyboard dismiss, edge swipe, dialog)

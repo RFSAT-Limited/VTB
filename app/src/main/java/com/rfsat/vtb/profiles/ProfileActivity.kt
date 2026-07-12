@@ -57,59 +57,14 @@ class ProfileActivity : BaseActivity() {
         // Underline section titles for visibility (no XML attribute for
         // underline; paint flags are the standard way).
         listOf(binding.tvHeaderRifle, binding.tvHeaderBullet, binding.tvHeaderScope,
-               binding.tvHeaderDropCal, binding.tvHeaderWindCal, binding.tvHeaderSets).forEach {
+               binding.tvHeaderDropCal, binding.tvHeaderSets).forEach {
             it.paintFlags = it.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
         }
-
-        binding.tvTrueWindLabel.text = "Measured wind (${com.rfsat.vtb.ui.UnitsManager.speedUnitLabel()})"
-        binding.btnSolveWindScale.setOnClickListener { solveWindScale() }
-        refreshWindScale()
 
         binding.btnSaveSet.setOnClickListener { promptSaveSet() }
         binding.btnLoadSet.setOnClickListener { loadSelectedSet() }
         binding.btnDeleteSet.setOnClickListener { deleteSelectedSet() }
         refreshSetSpinner()
-    }
-
-    // ---- Wind calibration (v19.0) ----
-
-    private fun refreshWindScale() {
-        val scale = getSharedPreferences("vtb_wind_cal", MODE_PRIVATE).getFloat("scale", 1.0f)
-        binding.tvWindScale.text = "Wind scale factor: %.2f%s".format(
-            scale, if (scale == 1.0f) " (uncalibrated)" else "")
-    }
-
-    /**
-     * Solves the vapor estimator's effective-distance scale from ONE
-     * reference: enter the true crosswind (Kestrel-measured) that was
-     * blowing during the LAST analysis, and since the estimate is linear
-     * in the assumed centroid distance, newScale = oldScale x true/est.
-     */
-    private fun solveWindScale() {
-        val um = com.rfsat.vtb.ui.UnitsManager
-        val input = binding.etTrueWind.text.toString().toDoubleOrNull()
-        if (input == null || input <= 0.0) {
-            notifyUser("Enter the wind speed the Kestrel measured during the last analyzed shot.")
-            return
-        }
-        val trueMps = if (um.isImperial()) input * 0.44704 else input
-        com.rfsat.vtb.results.AnalysisSession.restore(this)
-        val estMps = kotlin.math.abs(
-            com.rfsat.vtb.results.AnalysisSession.adjustment?.estimatedCrosswindMps ?: 0.0
-        )
-        if (estMps < 0.1) {
-            notifyUser("Last analysis has no usable wind estimate to calibrate against.")
-            return
-        }
-        val prefs = getSharedPreferences("vtb_wind_cal", MODE_PRIVATE)
-        val old = prefs.getFloat("scale", 1.0f)
-        val solved = (old * trueMps / estMps).toFloat().coerceIn(0.2f, 5.0f)
-        prefs.edit().putFloat("scale", solved).apply()
-        com.rfsat.vtb.log.Logger.i("ProfileActivity",
-            "Wind scale calibrated: true=%.2f m/s est=%.2f m/s -> scale %.2f (was %.2f)"
-                .format(trueMps, estMps, solved, old))
-        refreshWindScale()
-        notifyUser("Wind scale set to %.2f — applies to the next analysis.".format(solved))
     }
 
     // ---- Profile sets (v16.0) ----
@@ -137,11 +92,7 @@ class ProfileActivity : BaseActivity() {
                 saveFromFields()
                 repo.saveSet(ProfileSet(name, repo.getRifle(), repo.getBullet(), repo.getScope()))
                 refreshSetSpinner()
-<<<<<<< HEAD
-                notifyUser("Saved set \"$name\".")
-=======
                 android.widget.Toast.makeText(this, "Saved set \"$name\".", android.widget.Toast.LENGTH_SHORT).show()
->>>>>>> parent of 8a539ed (v 18.1)
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -155,11 +106,7 @@ class ProfileActivity : BaseActivity() {
 
     private fun loadSelectedSet() {
         val set = selectedSet() ?: run {
-<<<<<<< HEAD
-            notifyUser("No saved sets yet — use \"Save as set\" first.")
-=======
             android.widget.Toast.makeText(this, "No saved sets yet — use \"Save as set\" first.", android.widget.Toast.LENGTH_SHORT).show()
->>>>>>> parent of 8a539ed (v 18.1)
             return
         }
         repo.saveRifle(set.rifle)
@@ -167,11 +114,7 @@ class ProfileActivity : BaseActivity() {
         repo.saveScope(set.scope)
         loadIntoFields()
         refreshDropReadouts()
-<<<<<<< HEAD
-        notifyUser("Loaded set \"${set.name}\" as active.")
-=======
         android.widget.Toast.makeText(this, "Loaded set \"${set.name}\" as active.", android.widget.Toast.LENGTH_SHORT).show()
->>>>>>> parent of 8a539ed (v 18.1)
     }
 
     private fun deleteSelectedSet() {
@@ -206,19 +149,11 @@ class ProfileActivity : BaseActivity() {
         val dropM = binding.etTableDrop.text.toString().toDoubleOrNull()
             ?.let { it * if (um.isImperial()) 0.0254 else 0.01 }
         if (tableZeroM == null || rangeM == null || dropM == null) {
-<<<<<<< HEAD
-            notifyUser("Fill table zero, range and official drop first.")
-            return
-        }
-        if (rangeM <= tableZeroM + 1.0) {
-            notifyUser("Reference range must be beyond the table zero (drop is 0 at the zero).")
-=======
             android.widget.Toast.makeText(this, "Fill table zero, range and official drop first.", android.widget.Toast.LENGTH_LONG).show()
             return
         }
         if (rangeM <= tableZeroM + 1.0) {
             android.widget.Toast.makeText(this, "Reference range must be beyond the table zero (drop is 0 at the zero).", android.widget.Toast.LENGTH_LONG).show()
->>>>>>> parent of 8a539ed (v 18.1)
             return
         }
         // Calibrate against what's TYPED (MV, BC), not what was last saved.
@@ -242,13 +177,6 @@ class ProfileActivity : BaseActivity() {
         var lo = 0.2; var hi = 5.0
         val dLo = dropAt(lo); val dHi = dropAt(hi)
         if (dLo == null || dLo > dropM) {
-<<<<<<< HEAD
-            notifyUser("Official drop is below what the model can reach even at minimal drag — check muzzle velocity, BC and units.")
-            return
-        }
-        if (dHi != null && dHi < dropM) {
-            notifyUser("Official drop exceeds the model even at maximal drag — check muzzle velocity, BC and units.")
-=======
             android.widget.Toast.makeText(this,
                 "Official drop is below what the model can reach even at minimal drag — check muzzle velocity, BC and units.",
                 android.widget.Toast.LENGTH_LONG).show()
@@ -258,7 +186,6 @@ class ProfileActivity : BaseActivity() {
             android.widget.Toast.makeText(this,
                 "Official drop exceeds the model even at maximal drag — check muzzle velocity, BC and units.",
                 android.widget.Toast.LENGTH_LONG).show()
->>>>>>> parent of 8a539ed (v 18.1)
             return
         }
         repeat(48) {
@@ -271,11 +198,7 @@ class ProfileActivity : BaseActivity() {
         com.rfsat.vtb.log.Logger.i("ProfileActivity",
             "Drag calibrated from official drop: k=${"%.3f".format(k)} " +
             "(tableZero=${"%.0f".format(tableZeroM)}m range=${"%.0f".format(rangeM)}m drop=${"%.3f".format(dropM)}m)")
-<<<<<<< HEAD
-        notifyUser("Drag calibration factor set to ${"%.3f".format(k)}.")
-=======
         android.widget.Toast.makeText(this, "Drag calibration factor set to ${"%.3f".format(k)}.", android.widget.Toast.LENGTH_LONG).show()
->>>>>>> parent of 8a539ed (v 18.1)
         refreshDropReadouts()
     }
 
