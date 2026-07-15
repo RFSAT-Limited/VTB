@@ -125,6 +125,9 @@ class CaptureActivity : BaseActivity() {
         binding.btnNudgeReset.setOnClickListener { setBoresight(0.0, 0.0) }
 
         binding.btnRecord.setOnClickListener { toggleRecording() }
+        // v19.8: the zoom field drives the camera — apply on Done / focus loss.
+        binding.etZoom.setOnEditorActionListener { _, _, _ -> applyCaptureZoom(); false }
+        binding.etZoom.setOnFocusChangeListener { _, has -> if (!has) applyCaptureZoom() }
         binding.btnImportVideo.setOnClickListener { importVideoLauncher.launch("video/*") }
         binding.btnAnalyze.setOnClickListener { runAnalysis() }
         binding.btnAnalyze.isEnabled = false
@@ -172,6 +175,38 @@ class CaptureActivity : BaseActivity() {
      * Best-effort: any failure leaves the default pipeline untouched.
      */
     private var camera2Control: androidx.camera.camera2.interop.Camera2CameraControl? = null
+    private var boundCamera: androidx.camera.core.Camera? = null
+    private var supportedFixedFps: List<Int> = emptyList()
+
+    /**
+     * v19.8: the Zoom (x) field now COMMANDS the camera as well as
+     * describing the clip. Setting zoomRatio on a logical multi-camera
+     * engages the optical telephoto automatically at its native ratio
+     * (3x on the S24) and digital-crops between/beyond — so the phone
+     * frames close to what the scope sees, and drift resolution scales
+     * with the magnification. Analysis geometry needs NO special-casing:
+     * Camera2 defines zoomRatio as an exact FOV divisor, which is
+     * precisely the base-FOV/zoom recombination the analysis already does.
+     */
+    private fun applyCaptureZoom() {
+        val cam = boundCamera ?: return
+        val requested = binding.etZoom.text.toString().toDoubleOrNull() ?: return
+        val state = cam.cameraInfo.zoomState.value
+        val lo = (state?.minZoomRatio ?: 1.0f).toDouble()
+        val hi = (state?.maxZoomRatio ?: 10.0f).toDouble()
+        val applied = requested.coerceIn(lo, hi)
+        try {
+            cam.cameraControl.setZoomRatio(applied.toFloat())
+            Logger.i(TAG, "Capture zoom: requested %.2fx -> applied %.2fx (device range %.1f-%.1fx)"
+                .format(requested, applied, lo, hi))
+            if (applied != requested) {
+                notifyUser("Zoom clamped to %.1fx (device range %.1f-%.1fx).".format(applied, lo, hi))
+                binding.etZoom.setText(String.format("%.1f", applied))
+            }
+        } catch (t: Throwable) {
+            Logger.w(TAG, "Zoom apply failed: ${t.message}")
+        }
+    }
 
     /**
      * v19.7 (accuracy): AE/AWB lock while recording. The extractor scores
@@ -204,7 +239,52 @@ class CaptureActivity : BaseActivity() {
             val ranges = info.getCameraCharacteristic(
                 android.hardware.camera2.CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES
             )
-            val supports60 = ranges?.any { it.lower == 60 && it.upper == 60 } == true
+            // v19.8: user-selectable frame rate. Offer exactly the FIXED
+            // rates the sensor supports in a normal session (lower==upper;
+            // variable ranges like 15-30 are AE's business, not ours) —
+            // 120 fps appears only on devices that truly expose it here.
+            supportedFixedFps = ranges?.filter { it.lower == it.upper }
+                ?.map { it.lower }?.distinct()?.sorted() ?: emptyList()
+            setupFpsSpinner()
+            applyCaptureTuning()
+        } catch (t: Throwable) {
+            Logger.w(TAG, "Capture tuning unavailable: ${t.message}")
+        }
+    }
+
+    private fun selectedFps(): Int =
+        getSharedPreferences("vtb_capture_fields", MODE_PRIVATE).getInt("capture_fps", 0)
+
+    private fun setupFpsSpinner() {
+        val labels = listOf("Auto") + supportedFixedFps.map { "$it fps" }
+        val adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, labels)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spFrameRate.adapter = adapter
+        val saved = selectedFps()
+        val idx = if (saved > 0) supportedFixedFps.indexOf(saved).let { if (it >= 0) it + 1 else 0 } else 0
+        binding.spFrameRate.setSelection(idx, false)
+        binding.spFrameRate.onItemSelectedListener =
+            object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(p: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
+                    val fps = if (pos == 0) 0 else supportedFixedFps[pos - 1]
+                    if (fps != selectedFps()) {
+                        getSharedPreferences("vtb_capture_fields", MODE_PRIVATE)
+                            .edit().putInt("capture_fps", fps).apply()
+                        applyCaptureTuning()
+                    }
+                }
+                override fun onNothingSelected(p: android.widget.AdapterView<*>?) {}
+            }
+    }
+
+    /** Stabilization OFF always; plus the chosen fixed frame rate when the
+     *  sensor supports it. (Exposure lock is layered separately with
+     *  addCaptureRequestOptions so it survives re-tuning order.) */
+    @androidx.annotation.OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
+    private fun applyCaptureTuning() {
+        val c = camera2Control ?: return
+        try {
+            val fps = selectedFps().takeIf { it in supportedFixedFps }
             val opts = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
                 .setCaptureRequestOption(
                     android.hardware.camera2.CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE,
@@ -215,15 +295,14 @@ class CaptureActivity : BaseActivity() {
                     android.hardware.camera2.CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF
                 )
                 .apply {
-                    if (supports60) setCaptureRequestOption(
+                    if (fps != null) setCaptureRequestOption(
                         android.hardware.camera2.CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                        android.util.Range(60, 60)
+                        android.util.Range(fps, fps)
                     )
                 }
                 .build()
-            androidx.camera.camera2.interop.Camera2CameraControl.from(camera.cameraControl)
-                .setCaptureRequestOptions(opts)
-            Logger.i(TAG, "Capture configured: stabilization OFF, 60fps=${supports60}")
+            c.setCaptureRequestOptions(opts)
+            Logger.i(TAG, "Capture configured: stabilization OFF, fps=${fps ?: "auto"} (supported fixed: $supportedFixedFps)")
         } catch (t: Throwable) {
             Logger.w(TAG, "Capture tuning unavailable: ${t.message}")
         }
@@ -359,7 +438,10 @@ class CaptureActivity : BaseActivity() {
 
             provider.unbindAll()
             val camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture)
+            boundCamera = camera
             configureCaptureForAnalysis(camera)
+            // v19.8: restore the user's magnification for the new session
+            binding.root.post { applyCaptureZoom() }
             // Auto-FOV: fill the field from the real optics now and whenever
             // the zoom changes (a zoom change invalidates any manual value).
             // The field stays editable for imported clips from other devices.
