@@ -171,9 +171,35 @@ class CaptureActivity : BaseActivity() {
      *    estimator's in-flight sample count.
      * Best-effort: any failure leaves the default pipeline untouched.
      */
+    private var camera2Control: androidx.camera.camera2.interop.Camera2CameraControl? = null
+
+    /**
+     * v19.7 (accuracy): AE/AWB lock while recording. The extractor scores
+     * luminance DIFFERENCES against a reference frame — auto-exposure
+     * reacting mid-clip (muzzle flash, cloud, recoil toward brighter sky)
+     * brightens whole frames and reads as false trail signal. Locking at
+     * record-start makes the static-background assumption actually true.
+     */
+    @androidx.annotation.OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
+    private fun setExposureLock(locked: Boolean) {
+        val c = camera2Control ?: return
+        try {
+            c.addCaptureRequestOptions(
+                androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
+                    .setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_AE_LOCK, locked)
+                    .setCaptureRequestOption(android.hardware.camera2.CaptureRequest.CONTROL_AWB_LOCK, locked)
+                    .build()
+            )
+            Logger.i(TAG, if (locked) "AE/AWB locked for recording" else "AE/AWB unlocked")
+        } catch (t: Throwable) {
+            Logger.w(TAG, "Exposure lock unavailable: ${t.message}")
+        }
+    }
+
     @androidx.annotation.OptIn(androidx.camera.camera2.interop.ExperimentalCamera2Interop::class)
     private fun configureCaptureForAnalysis(camera: androidx.camera.core.Camera) {
         try {
+            camera2Control = androidx.camera.camera2.interop.Camera2CameraControl.from(camera.cameraControl)
             val info = androidx.camera.camera2.interop.Camera2CameraInfo.from(camera.cameraInfo)
             val ranges = info.getCameraCharacteristic(
                 android.hardware.camera2.CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES
@@ -392,9 +418,11 @@ class CaptureActivity : BaseActivity() {
             contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         ).setContentValues(contentValues).build()
 
+        setExposureLock(true) // v19.7: freeze AE/AWB for the whole clip
         recording = capture.output.prepareRecording(this, outputOptions)
             .start(ContextCompat.getMainExecutor(this)) { event ->
                 if (event is VideoRecordEvent.Finalize) {
+                    setExposureLock(false)
                     pendingUri = event.outputResults.outputUri
                     Logger.i(TAG, "Recording finalized: ${pendingUri}")
                 }
@@ -499,7 +527,7 @@ class CaptureActivity : BaseActivity() {
             notifyUser("No video available yet — record or import one first.")
             return
         }
-        val shotBreakOffsetS = binding.etShotBreakSeconds.text.toString().toDoubleOrNull() ?: 0.5
+        val manualShotBreakS = binding.etShotBreakSeconds.text.toString().toDoubleOrNull() ?: 0.5
         val targetDistanceYd = readTargetDistanceMeters() / 0.9144
         val fovDeg = binding.etHorizontalFov.text.toString().toDoubleOrNull() ?: 60.0
         // FOV gates the entire pixel-to-angle calibration; out-of-range values
@@ -531,7 +559,7 @@ class CaptureActivity : BaseActivity() {
 
         lifecycleScope.launch(Dispatchers.Default) {
             try {
-                Logger.i(TAG, "Analysis starting: uri=$uri shotBreak=${shotBreakOffsetS}s target=${targetDistanceYd}yd " +
+                Logger.i(TAG, "Analysis starting: uri=$uri shotBreak(field)=${manualShotBreakS}s target=${targetDistanceYd}yd " +
                     "baseFov=${"%.1f".format(fovDeg)}deg zoom=${"%.1f".format(zoom)}x -> effFov=${"%.2f".format(effectiveFovDeg)}deg " +
                     "externalRef=${referenceBitmap != null}")
 
@@ -553,6 +581,19 @@ class CaptureActivity : BaseActivity() {
                     return@launch
                 }
                 Logger.i(TAG, "Video copied to cache: ${localFile.absolutePath} (${localFile.length() / 1024} KB)")
+
+                // v19.7 (accuracy): pin the shot break to the muzzle report in
+                // the clip's own audio. An error in t0 shifts the settle window
+                // and biases the tracer lag rule directly; the report is a
+                // millisecond-sharp transient, and this works for imported
+                // clips exactly as for recorded ones. Falls back to the field
+                // value when the clip has no audio or no distinct transient.
+                val detectedShotS = AudioShotDetector.detectShotTimeS(localFile.absolutePath)
+                val shotBreakOffsetS = detectedShotS ?: manualShotBreakS
+                Logger.i(TAG, if (detectedShotS != null)
+                    "Shot break from AUDIO: ${"%.3f".format(detectedShotS)} s (field ${"%.2f".format(manualShotBreakS)} s)"
+                else
+                    "Shot break from field: ${"%.2f".format(manualShotBreakS)} s (no audio transient)")
 
                 // TOF along the ZEROED trajectory, computed up-front: it sizes
                 // the tracking window AND the estimator's settle threshold, so
