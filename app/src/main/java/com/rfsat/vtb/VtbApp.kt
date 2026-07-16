@@ -38,6 +38,7 @@ class VtbApp : Application() {
         runCatching { Logger.init(this) }
         runCatching { ThemeManager.init(this) }
         runCatching { com.rfsat.vtb.ui.UnitsManager.init(this) }
+        runCatching { com.rfsat.vtb.environment.EnvironmentManager.restore(this) } // v19.9: weather survives restarts
         if (lastCrashed) {
             runCatching { Logger.w("VtbApp", "Previous launch crashed — skipping stored-analysis restore (safe mode)") }
         } else {

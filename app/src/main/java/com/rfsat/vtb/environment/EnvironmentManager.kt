@@ -33,6 +33,55 @@ object EnvironmentManager {
 
     private const val TAG = "EnvironmentManager"
     private const val SENSOR_TIMEOUT_MS = 2500L
+    private const val PREFS = "vtb_environment"
+
+    private var appContext: Context? = null
+
+    /**
+     * v19.9: weather survives app restarts. Values and their sources are
+     * written on every update and restored at startup — so a Kestrel
+     * reading taken at the range is still the working atmosphere after a
+     * phone reboot. The phone-sensor refresh can't clobber it: on devices
+     * without temp/RH sensors those fields keep the restored value AND
+     * source (the prev-preserving update semantics below).
+     */
+    fun restore(context: Context) {
+        appContext = context.applicationContext
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!p.contains("pressPa")) return
+        runCatching {
+            current = Reading(
+                Atmosphere(
+                    seaLevelPressurePa = p.getFloat("pressPa", 101325f).toDouble(),
+                    temperatureC = p.getFloat("tempC", 15f).toDouble(),
+                    altitudeM = 0.0,
+                    relativeHumidity = p.getFloat("humFrac", 0f).toDouble()
+                ),
+                temperatureSource = p.getString("tSrc", "default")!!,
+                pressureSource = p.getString("pSrc", "default")!!,
+                humiditySource = p.getString("hSrc", "default")!!,
+                informationalAltitudeM =
+                    if (p.contains("altM")) p.getFloat("altM", 0f).toDouble() else null
+            )
+            val ageH = (System.currentTimeMillis() - p.getLong("time", 0L)) / 3_600_000.0
+            Logger.i(TAG, "Environment restored from previous session (age %.1f h): %s".format(ageH, describe()))
+        }
+    }
+
+    private fun persist() {
+        val ctx = appContext ?: return
+        val r = current
+        val e = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putFloat("pressPa", r.atmosphere.seaLevelPressurePa.toFloat())
+            .putFloat("tempC", r.atmosphere.temperatureC.toFloat())
+            .putFloat("humFrac", r.atmosphere.relativeHumidity.toFloat())
+            .putString("tSrc", r.temperatureSource)
+            .putString("pSrc", r.pressureSource)
+            .putString("hSrc", r.humiditySource)
+            .putLong("time", System.currentTimeMillis())
+        r.informationalAltitudeM?.let { e.putFloat("altM", it.toFloat()) }
+        e.apply()
+    }
 
     /** Where each value came from, for the status line and the log. */
     data class Reading(
@@ -66,6 +115,7 @@ object EnvironmentManager {
             } ?: prev.informationalAltitudeM
         )
         Logger.i(TAG, "Environment from Kestrel: ${describe()}")
+        persist()
     }
 
     /**
@@ -125,6 +175,7 @@ object EnvironmentManager {
                     } ?: prev.informationalAltitudeM
                 )
                 Logger.i(TAG, "Environment from phone sensors: ${describe()}")
+                persist()
                 handler.post { onDone(current) }
             }
         }

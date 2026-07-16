@@ -125,9 +125,17 @@ class CaptureActivity : BaseActivity() {
         binding.btnNudgeReset.setOnClickListener { setBoresight(0.0, 0.0) }
 
         binding.btnRecord.setOnClickListener { toggleRecording() }
-        // v19.8: the zoom field drives the camera — apply on Done / focus loss.
-        binding.etZoom.setOnEditorActionListener { _, _, _ -> applyCaptureZoom(); false }
-        binding.etZoom.setOnFocusChangeListener { _, has -> if (!has) applyCaptureZoom() }
+        // v19.9: the SLIDER commands the camera (unit steps); the Zoom (x)
+        // field is descriptive again — auto-echoed from the camera, manual
+        // only for imported clips.
+        binding.slZoom.addOnChangeListener { _, value, fromUser ->
+            binding.tvZoomLabel.text = "Camera zoom: ${value.toInt()}×"
+            if (fromUser) {
+                getSharedPreferences("vtb_capture_fields", MODE_PRIVATE)
+                    .edit().putInt("capture_zoom", value.toInt()).apply()
+                applyCaptureZoom(value.toDouble())
+            }
+        }
         binding.btnImportVideo.setOnClickListener { importVideoLauncher.launch("video/*") }
         binding.btnAnalyze.setOnClickListener { runAnalysis() }
         binding.btnAnalyze.isEnabled = false
@@ -188,24 +196,41 @@ class CaptureActivity : BaseActivity() {
      * Camera2 defines zoomRatio as an exact FOV divisor, which is
      * precisely the base-FOV/zoom recombination the analysis already does.
      */
-    private fun applyCaptureZoom() {
+    private fun applyCaptureZoom(requested: Double) {
         val cam = boundCamera ?: return
-        val requested = binding.etZoom.text.toString().toDoubleOrNull() ?: return
         val state = cam.cameraInfo.zoomState.value
         val lo = (state?.minZoomRatio ?: 1.0f).toDouble()
-        val hi = (state?.maxZoomRatio ?: 10.0f).toDouble()
+        val hi = (state?.maxZoomRatio ?: 8.0f).toDouble()
         val applied = requested.coerceIn(lo, hi)
         try {
             cam.cameraControl.setZoomRatio(applied.toFloat())
-            Logger.i(TAG, "Capture zoom: requested %.2fx -> applied %.2fx (device range %.1f-%.1fx)"
-                .format(requested, applied, lo, hi))
-            if (applied != requested) {
-                notifyUser("Zoom clamped to %.1fx (device range %.1f-%.1fx).".format(applied, lo, hi))
-                binding.etZoom.setText(String.format("%.1f", applied))
-            }
+            Logger.i(TAG, "Capture zoom: %.0fx applied (device range %.1f-%.1fx)"
+                .format(applied, lo, hi))
         } catch (t: Throwable) {
             Logger.w(TAG, "Zoom apply failed: ${t.message}")
         }
+    }
+
+    /** v19.9: bound the slider by the device's REAL zoom range (unit steps
+     *  from 1x to floor(max)), restore the persisted magnification, apply. */
+    private var zoomSliderReady = false
+    private fun setupZoomSlider(maxZoomRatio: Float) {
+        if (zoomSliderReady) return
+        zoomSliderReady = true
+        val maxStep = kotlin.math.floor(maxZoomRatio).toInt().coerceAtLeast(1)
+        if (maxStep < 2) {
+            binding.slZoom.visibility = android.view.View.GONE
+            binding.tvZoomLabel.visibility = android.view.View.GONE
+            Logger.i(TAG, "Zoom slider hidden — device max zoom %.1fx".format(maxZoomRatio))
+            return
+        }
+        binding.slZoom.valueTo = maxStep.toFloat()
+        val saved = getSharedPreferences("vtb_capture_fields", MODE_PRIVATE)
+            .getInt("capture_zoom", 1).coerceIn(1, maxStep)
+        binding.slZoom.value = saved.toFloat()
+        binding.tvZoomLabel.text = "Camera zoom: ${saved}×"
+        Logger.i(TAG, "Zoom slider: 1-${maxStep}x (device max %.1fx), restored ${saved}x".format(maxZoomRatio))
+        applyCaptureZoom(saved.toDouble())
     }
 
     /**
@@ -440,12 +465,13 @@ class CaptureActivity : BaseActivity() {
             val camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture)
             boundCamera = camera
             configureCaptureForAnalysis(camera)
-            // v19.8: restore the user's magnification for the new session
-            binding.root.post { applyCaptureZoom() }
             // Auto-FOV: fill the field from the real optics now and whenever
             // the zoom changes (a zoom change invalidates any manual value).
             // The field stays editable for imported clips from other devices.
             camera.cameraInfo.zoomState.observe(this) { zoomState ->
+                // v19.9: first emission carries the real device range —
+                // bound the slider by it and restore the saved magnification.
+                zoomState?.maxZoomRatio?.let { setupZoomSlider(it) }
                 // v13.0: FOV field now holds the BASE (1x) FOV; the zoom
                 // lives in its own field. Effective FOV is recombined at
                 // analysis time — this keeps both numbers meaningful for
