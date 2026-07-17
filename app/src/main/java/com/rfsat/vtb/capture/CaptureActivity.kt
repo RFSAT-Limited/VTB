@@ -182,6 +182,9 @@ class CaptureActivity : BaseActivity() {
      *    estimator's in-flight sample count.
      * Best-effort: any failure leaves the default pipeline untouched.
      */
+    /** v20.2: a fling on the zoom slider must move the slider, not tabs. */
+    override fun swipeExemptViews(): List<android.view.View> = listOf(binding.slZoom)
+
     private var camera2Control: androidx.camera.camera2.interop.Camera2CameraControl? = null
     private var boundCamera: androidx.camera.core.Camera? = null
     private var supportedFixedFps: List<Int> = emptyList()

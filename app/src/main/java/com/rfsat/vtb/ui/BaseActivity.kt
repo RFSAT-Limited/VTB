@@ -110,21 +110,79 @@ open class BaseActivity : AppCompatActivity() {
             for (i in 0 until nav.menu.size()) nav.menu.getItem(i).isChecked = false
             nav.menu.setGroupCheckable(0, true, true)
         }
+        navSelectedItemId = selectedItemId
         nav.setOnItemSelectedListener { item ->
             if (item.itemId == selectedItemId) return@setOnItemSelectedListener true
-            val target = when (item.itemId) {
-                R.id.nav_home -> MainActivity::class.java
-                R.id.nav_capture -> com.rfsat.vtb.capture.CaptureActivity::class.java
-                R.id.nav_profiles -> com.rfsat.vtb.profiles.ProfileActivity::class.java
-                R.id.nav_log -> com.rfsat.vtb.log.LogActivity::class.java
-                else -> return@setOnItemSelectedListener false
-            }
-            val intent = Intent(this, target)
-            if (target == MainActivity::class.java) intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            startActivity(intent)
-            if (this !is MainActivity) finish() // keep the back stack flat when hopping tabs
-            overridePendingTransition(0, 0) // v17.1: no tab-hop animation
+            openTab(item.itemId)
             false
         }
+    }
+
+    /** Opens a bottom-nav tab — shared by taps and swipe navigation (v20.2). */
+    private fun openTab(itemId: Int) {
+        val target = when (itemId) {
+            R.id.nav_home -> MainActivity::class.java
+            R.id.nav_capture -> com.rfsat.vtb.capture.CaptureActivity::class.java
+            R.id.nav_profiles -> com.rfsat.vtb.profiles.ProfileActivity::class.java
+            R.id.nav_log -> com.rfsat.vtb.log.LogActivity::class.java
+            else -> return
+        }
+        val intent = Intent(this, target)
+        if (target == MainActivity::class.java) intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        startActivity(intent)
+        if (this !is MainActivity) finish() // keep the back stack flat when hopping tabs
+        overridePendingTransition(0, 0) // v17.1: no tab-hop animation
+    }
+
+    // ---- Swipe navigation (v20.2): slide left/right to switch tabs ----
+    //
+    // Implemented as a manual fling check in dispatchTouchEvent rather than
+    // a GestureDetector: deterministic thresholds, no listener-signature
+    // coupling, and it observes without consuming — child views behave
+    // exactly as before. A swipe must be long (>=100 dp), fast
+    // (>=500 dp/s), and strongly horizontal (|dx| > 2.5|dy|); swipe left
+    // opens the tab to the RIGHT (pager convention). Screens outside the
+    // tab order (Results) ignore swipes, and activities can exempt
+    // interactive horizontal controls via swipeExemptViews().
+
+    private var navSelectedItemId: Int = 0
+    private val tabOrder = intArrayOf(R.id.nav_home, R.id.nav_capture, R.id.nav_profiles, R.id.nav_log)
+    private var swipeDownX = 0f
+    private var swipeDownY = 0f
+    private var swipeDownT = 0L
+    private var swipeBlocked = false
+
+    /** Views whose touches must never become tab swipes (e.g. sliders). */
+    protected open fun swipeExemptViews(): List<android.view.View> = emptyList()
+
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                swipeDownX = ev.rawX; swipeDownY = ev.rawY; swipeDownT = ev.eventTime
+                swipeBlocked = swipeExemptViews().any { it.isShown && hitInside(it, ev) }
+            }
+            android.view.MotionEvent.ACTION_UP -> if (!swipeBlocked) maybeTabSwipe(ev)
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun hitInside(v: android.view.View, ev: android.view.MotionEvent): Boolean {
+        val loc = IntArray(2); v.getLocationOnScreen(loc)
+        return ev.rawX >= loc[0] && ev.rawX <= loc[0] + v.width &&
+               ev.rawY >= loc[1] && ev.rawY <= loc[1] + v.height
+    }
+
+    private fun maybeTabSwipe(ev: android.view.MotionEvent) {
+        val d = resources.displayMetrics.density
+        val dx = ev.rawX - swipeDownX
+        val dy = ev.rawY - swipeDownY
+        if (kotlin.math.abs(dx) < 100f * d) return
+        if (kotlin.math.abs(dx) < 2.5f * kotlin.math.abs(dy)) return
+        val dtMs = (ev.eventTime - swipeDownT).coerceAtLeast(1)
+        if (kotlin.math.abs(dx) * 1000f / dtMs < 500f * d) return
+        val idx = tabOrder.indexOf(navSelectedItemId)
+        if (idx < 0) return
+        val next = idx + if (dx < 0) 1 else -1 // finger left => next tab
+        if (next in tabOrder.indices) openTab(tabOrder[next])
     }
 }
