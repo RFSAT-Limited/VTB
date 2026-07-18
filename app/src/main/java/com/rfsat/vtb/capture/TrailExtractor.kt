@@ -34,7 +34,8 @@ object TrailExtractor {
     private const val TAG = "TrailExtractor"
     private const val MAX_DECODE_WIDTH = 640
     private const val REF_WINDOW_S = 0.35   // pre-shot span scanned for reference frames (v20.1)
-    private const val REF_FRAMES_MAX = 8    // cap: sqrt-gain flattens, memory doesn't
+    private const val REF_FRAMES_MAX = 8
+    private val EMPTY = DoubleArray(0)    // cap: sqrt-gain flattens, memory doesn't
     private const val GRADIENT_WEIGHT = 2.0
     /** Tracer mode: weight on the red-dominance delta term. */
     private const val RED_WEIGHT = 1.5
@@ -117,7 +118,11 @@ object TrailExtractor {
                 // Falls back to the classic single-frame lookup when the clip
                 // has no pre-shot footage (audio-detected t0 near clip start).
                 val accLum = DoubleArray(w * h)
-                val accRed = if (mode == Mode.TRACER) DoubleArray(w * h) else null
+                // v20.3: zero-length instead of null when unused — indexed
+                // writes on a DoubleArray? require smart casts that Kotlin
+                // refuses for values captured into the decoder lambda (two
+                // CI failures taught this); a non-null empty array needs none.
+                val accRed = DoubleArray(if (mode == Mode.TRACER) w * h else 0)
                 var refN = 0
                 val refStartS = (shotBreakOffsetS - REF_WINDOW_S).coerceAtLeast(0.0)
                 val refEndS = (shotBreakOffsetS - 0.01).coerceAtLeast(0.0)
@@ -126,20 +131,16 @@ object TrailExtractor {
                         needRed = (mode == Mode.TRACER)) { f ->
                         if (f.width == w && f.height == h && refN < REF_FRAMES_MAX) {
                             for (i in accLum.indices) accLum[i] += f.lum[i]
-                            // Lambda-local vals: captured nullables don't
-                            // smart-cast inside closures (the CI compile
-                            // error "no set method providing array access").
-                            val r = accRed
-                            val fr = f.red
-                            if (r != null && fr != null)
-                                for (i in r.indices) r[i] += fr[i]
+                            val fRed = f.red ?: EMPTY
+                            val nRed = if (accRed.size < fRed.size) accRed.size else fRed.size
+                            for (i in 0 until nRed) accRed[i] += fRed[i]
                             refN++
                         }
                     }
                 }
                 if (refN > 0) {
                     for (i in accLum.indices) accLum[i] /= refN
-                    accRed?.let { r -> for (i in r.indices) r[i] /= refN }
+                    for (i in accRed.indices) accRed[i] /= refN
                     refLum = accLum
                     if (mode == Mode.TRACER) refRed = accRed
                     Logger.i(TAG, "Multi-frame reference: averaged $refN pre-shot frames")
