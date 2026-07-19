@@ -57,6 +57,7 @@ class ProfileActivity : BaseActivity() {
         // Underline section titles for visibility (no XML attribute for
         // underline; paint flags are the standard way).
         setupDisplaySpinners()
+        setupFieldUnits()
         binding.btnAmmoCatalog.setOnClickListener { showAmmoCatalog() }
         binding.btnChronograph.setOnClickListener { showChronograph() }
         binding.btnBulletCsvExport.setOnClickListener { csvKind = CsvKind.BULLET; csvCreate.launch("vtb_bullets.csv") }
@@ -79,6 +80,22 @@ class ProfileActivity : BaseActivity() {
         binding.btnLoadSet.setOnClickListener { loadSelectedSet() }
         binding.btnDeleteSet.setOnClickListener { deleteSelectedSet() }
         refreshSetSpinner()
+    }
+
+    // ---- Per-field unit selection (v20.9) ----
+
+    private lateinit var uBarrel: FieldUnits.Binding
+    private lateinit var uZero: FieldUnits.Binding
+    private lateinit var uCaliber: FieldUnits.Binding
+    private lateinit var uWeight: FieldUnits.Binding
+    private lateinit var uMv: FieldUnits.Binding
+
+    private fun setupFieldUnits() {
+        uBarrel = FieldUnits.Binding(this, FieldUnits.Kind.LENGTH_IN, binding.etBarrelLength, binding.spUBarrel)
+        uZero = FieldUnits.Binding(this, FieldUnits.Kind.DISTANCE, binding.etZeroDistance, binding.spUZero)
+        uCaliber = FieldUnits.Binding(this, FieldUnits.Kind.CALIBER, binding.etCaliber, binding.spUCaliber)
+        uWeight = FieldUnits.Binding(this, FieldUnits.Kind.WEIGHT, binding.etWeightGrains, binding.spUWeight)
+        uMv = FieldUnits.Binding(this, FieldUnits.Kind.VELOCITY, binding.etMuzzleVelocity, binding.spUMv)
     }
 
     // ---- Factory ammunition catalogue (v20.6) ----
@@ -161,9 +178,9 @@ class ProfileActivity : BaseActivity() {
     private fun applyCatalogEntry(b: BulletProfile) {
         with(binding) {
             etBulletName.setText(b.name)
-            etCaliber.setText(b.caliberDiameterIn.toString())
-            etWeightGrains.setText(b.weightGrains.toString())
-            etMuzzleVelocity.setText(b.muzzleVelocityFps.toString())
+            uCaliber.set(b.caliberDiameterIn)
+            uWeight.set(b.weightGrains)
+            uMv.set(b.muzzleVelocityFps)
             etBallisticCoefficient.setText(b.ballisticCoefficientG1.toString())
             etMvTempCoeff.setText("0.0")
             etMvRefTemp.setText("15.0")
@@ -177,25 +194,26 @@ class ProfileActivity : BaseActivity() {
 
     private fun showChronograph() {
         val v = layoutInflater.inflate(com.rfsat.vtb.R.layout.dialog_chronograph, null)
-        val mv1 = v.findViewById<android.widget.EditText>(com.rfsat.vtb.R.id.etChronoMv1)
-        val t1 = v.findViewById<android.widget.EditText>(com.rfsat.vtb.R.id.etChronoT1)
-        val mv2 = v.findViewById<android.widget.EditText>(com.rfsat.vtb.R.id.etChronoMv2)
-        val t2 = v.findViewById<android.widget.EditText>(com.rfsat.vtb.R.id.etChronoT2)
-        mv1.setText(binding.etMuzzleVelocity.text.toString())
-        t1.setText(String.format("%.1f",
-            com.rfsat.vtb.environment.EnvironmentManager.current.atmosphere.temperatureC))
+        // v20.9: each field carries its own unit spinner (fps/m·s and degC/degF).
+        val uMv1 = FieldUnits.Binding(this, FieldUnits.Kind.VELOCITY, v.findViewById(com.rfsat.vtb.R.id.etChronoMv1), v.findViewById(com.rfsat.vtb.R.id.spUChronoMv1))
+        val uT1 = FieldUnits.Binding(this, FieldUnits.Kind.TEMPERATURE, v.findViewById(com.rfsat.vtb.R.id.etChronoT1), v.findViewById(com.rfsat.vtb.R.id.spUChronoT1))
+        val uMv2 = FieldUnits.Binding(this, FieldUnits.Kind.VELOCITY, v.findViewById(com.rfsat.vtb.R.id.etChronoMv2), v.findViewById(com.rfsat.vtb.R.id.spUChronoMv2))
+        val uT2 = FieldUnits.Binding(this, FieldUnits.Kind.TEMPERATURE, v.findViewById(com.rfsat.vtb.R.id.etChronoT2), v.findViewById(com.rfsat.vtb.R.id.spUChronoT2))
+        uMv.get()?.let { uMv1.set(it) }
+        uT1.set(com.rfsat.vtb.environment.EnvironmentManager.current.atmosphere.temperatureC)
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Chronograph measurement")
             .setView(v)
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Apply") { _, _ ->
-                val m1 = mv1.text.toString().toDoubleOrNull()
-                if (m1 == null || m1 <= 0) { notifyUser("Enter the measured MV in fps."); return@setPositiveButton }
-                val temp1 = t1.text.toString().toDoubleOrNull() ?: 15.0
-                binding.etMuzzleVelocity.setText(m1.toString())
+                // Bindings return canonical units: MV in fps, temperature in degC.
+                val m1 = uMv1.get()
+                if (m1 == null || m1 <= 0) { notifyUser("Enter the measured muzzle velocity."); return@setPositiveButton }
+                val temp1 = uT1.get() ?: 15.0
+                uMv.set(m1)
                 binding.etMvRefTemp.setText(String.format("%.1f", temp1))
-                val m2 = mv2.text.toString().toDoubleOrNull()
-                val temp2 = t2.text.toString().toDoubleOrNull()
+                val m2 = uMv2.get()
+                val temp2 = uT2.get()
                 var msg = "Chronographed MV applied — review and Save; re-run drop calibration."
                 if (m2 != null && temp2 != null) {
                     if (kotlin.math.abs(temp1 - temp2) >= 3.0) {
@@ -266,9 +284,9 @@ class ProfileActivity : BaseActivity() {
     private fun applyImportedBullet(b: BulletProfile) {
         with(binding) {
             etBulletName.setText(b.name)
-            etCaliber.setText(b.caliberDiameterIn.toString())
-            etWeightGrains.setText(b.weightGrains.toString())
-            etMuzzleVelocity.setText(b.muzzleVelocityFps.toString())
+            uCaliber.set(b.caliberDiameterIn)
+            uWeight.set(b.weightGrains)
+            uMv.set(b.muzzleVelocityFps)
             etBallisticCoefficient.setText(b.ballisticCoefficientG1.toString())
             etMvTempCoeff.setText(b.mvTempCoeffMpsPerC.toString())
             etMvRefTemp.setText(b.mvRefTempC.toString())
@@ -281,10 +299,9 @@ class ProfileActivity : BaseActivity() {
     private fun applyImportedRifle(r: RifleProfile) {
         with(binding) {
             etRifleName.setText(r.name)
-            etBarrelLength.setText(r.barrelLengthIn.toString())
+            uBarrel.set(r.barrelLengthIn)
             etTwistRate.setText(r.twistRateInPerTurn.toString())
-            etZeroDistance.setText(String.format("%.1f",
-                com.rfsat.vtb.ui.UnitsManager.displayDistance(r.zeroDistanceM)))
+            uZero.set(r.zeroDistanceM)
         }
         pendingRifleBase = r // carries sight height + boresight offsets
         notifyUser("Rifle “${r.name}” loaded — review and Save.")
@@ -582,16 +599,15 @@ class ProfileActivity : BaseActivity() {
 
         with(binding) {
             etRifleName.setText(rifle.name)
-            etBarrelLength.setText(rifle.barrelLengthIn.toString())
+            uBarrel.set(rifle.barrelLengthIn)
             etTwistRate.setText(rifle.twistRateInPerTurn.toString())
-            tvZeroLabel.text = "Zero (${com.rfsat.vtb.ui.UnitsManager.distanceUnitLabel()})"
-            etZeroDistance.setText(String.format("%.1f",
-                com.rfsat.vtb.ui.UnitsManager.displayDistance(rifle.zeroDistanceM)))
+            tvZeroLabel.text = "Zero"
+            uZero.set(rifle.zeroDistanceM)
 
             etBulletName.setText(bullet.name)
-            etCaliber.setText(bullet.caliberDiameterIn.toString())
-            etWeightGrains.setText(bullet.weightGrains.toString())
-            etMuzzleVelocity.setText(bullet.muzzleVelocityFps.toString())
+            uCaliber.set(bullet.caliberDiameterIn)
+            uWeight.set(bullet.weightGrains)
+            uMv.set(bullet.muzzleVelocityFps)
             etMvTempCoeff.setText(bullet.mvTempCoeffMpsPerC.toString())
             etMvRefTemp.setText(bullet.mvRefTempC.toString())
             etBallisticCoefficient.setText(bullet.ballisticCoefficientG1.toString())
@@ -611,11 +627,9 @@ class ProfileActivity : BaseActivity() {
                 .also { pendingRifleBase = null }
                 .copy( // base carries boresight offsets + sight height
                 name = etRifleName.text.toString().ifBlank { RifleProfile.DEFAULT.name },
-                barrelLengthIn = etBarrelLength.text.toString().toDoubleOrNull() ?: RifleProfile.DEFAULT.barrelLengthIn,
+                barrelLengthIn = uBarrel.get() ?: RifleProfile.DEFAULT.barrelLengthIn,
                 twistRateInPerTurn = etTwistRate.text.toString().toDoubleOrNull() ?: RifleProfile.DEFAULT.twistRateInPerTurn,
-                zeroDistanceM = etZeroDistance.text.toString().toDoubleOrNull()
-                    ?.let { com.rfsat.vtb.ui.UnitsManager.inputDistanceToMeters(it) }
-                    ?: RifleProfile.DEFAULT.zeroDistanceM
+                zeroDistanceM = uZero.get() ?: RifleProfile.DEFAULT.zeroDistanceM
             )
         )
         repo.saveBullet(
@@ -627,9 +641,9 @@ class ProfileActivity : BaseActivity() {
                 .also { pendingBulletBase = null }
                 .copy(
                 name = etBulletName.text.toString().ifBlank { BulletProfile.DEFAULT.name },
-                caliberDiameterIn = etCaliber.text.toString().toDoubleOrNull() ?: BulletProfile.DEFAULT.caliberDiameterIn,
-                weightGrains = etWeightGrains.text.toString().toDoubleOrNull() ?: BulletProfile.DEFAULT.weightGrains,
-                muzzleVelocityFps = etMuzzleVelocity.text.toString().toDoubleOrNull() ?: BulletProfile.DEFAULT.muzzleVelocityFps,
+                caliberDiameterIn = uCaliber.get() ?: BulletProfile.DEFAULT.caliberDiameterIn,
+                weightGrains = uWeight.get() ?: BulletProfile.DEFAULT.weightGrains,
+                muzzleVelocityFps = uMv.get() ?: BulletProfile.DEFAULT.muzzleVelocityFps,
                 mvTempCoeffMpsPerC = etMvTempCoeff.text.toString().toDoubleOrNull() ?: 0.0,
                 mvRefTempC = etMvRefTemp.text.toString().toDoubleOrNull() ?: 15.0,
                 ballisticCoefficientG1 = etBallisticCoefficient.text.toString().toDoubleOrNull() ?: BulletProfile.DEFAULT.ballisticCoefficientG1,
