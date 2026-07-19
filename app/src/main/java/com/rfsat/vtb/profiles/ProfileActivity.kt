@@ -58,6 +58,13 @@ class ProfileActivity : BaseActivity() {
         // underline; paint flags are the standard way).
         setupDisplaySpinners()
         binding.btnAmmoCatalog.setOnClickListener { showAmmoCatalog() }
+        binding.btnChronograph.setOnClickListener { showChronograph() }
+        binding.btnBulletCsvExport.setOnClickListener { csvKind = CsvKind.BULLET; csvCreate.launch("vtb_bullets.csv") }
+        binding.btnBulletCsvImport.setOnClickListener { csvKind = CsvKind.BULLET; csvOpen.launch(arrayOf("*/*")) }
+        binding.btnRifleCsvExport.setOnClickListener { csvKind = CsvKind.RIFLE; csvCreate.launch("vtb_rifles.csv") }
+        binding.btnRifleCsvImport.setOnClickListener { csvKind = CsvKind.RIFLE; csvOpen.launch(arrayOf("*/*")) }
+        binding.btnScopeCsvExport.setOnClickListener { csvKind = CsvKind.SCOPE; csvCreate.launch("vtb_scopes.csv") }
+        binding.btnScopeCsvImport.setOnClickListener { csvKind = CsvKind.SCOPE; csvOpen.launch(arrayOf("*/*")) }
 
         listOf(binding.tvHeaderDisplay, binding.tvHeaderRifle, binding.tvHeaderBullet, binding.tvHeaderScope,
                binding.tvHeaderDropCal, binding.tvHeaderWindCal, binding.tvHeaderSets).forEach {
@@ -76,12 +83,26 @@ class ProfileActivity : BaseActivity() {
 
     // ---- Factory ammunition catalogue (v20.6) ----
 
-    /** Set by a catalogue pick, consumed by Save: the drag calibration
-     *  factor belongs to a LOAD, so choosing a new cartridge resets it to
-     *  1.0 — but only when the user actually saves. Resetting the stored
-     *  profile at pick time would corrupt the previous load's calibration
-     *  if the user cancelled instead. */
-    private var pendingDragCalReset = false
+    /** v20.7 pending-base pattern: a catalogue pick, chronograph entry or
+     *  CSV import stages a BASE profile consumed by the next Save. The base
+     *  carries the fields no text box edits (drag calibration factor,
+     *  boresight offsets, turret travels) — visible fields still come from
+     *  the boxes, so the user reviews before anything persists, and
+     *  cancelling (never saving) leaves the stored profile untouched. */
+    private var pendingBulletBase: BulletProfile? = null
+    private var pendingRifleBase: RifleProfile? = null
+    private var pendingScopeBase: ScopeProfile? = null
+
+    private enum class CsvKind { BULLET, RIFLE, SCOPE }
+    private var csvKind = CsvKind.BULLET
+
+    private val csvCreate = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri -> if (uri != null) writeCsv(uri) }
+
+    private val csvOpen = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) readCsv(uri) }
 
     private fun showAmmoCatalog() {
         val v = layoutInflater.inflate(com.rfsat.vtb.R.layout.dialog_ammo_catalog, null)
@@ -148,8 +169,141 @@ class ProfileActivity : BaseActivity() {
             etMvRefTemp.setText("15.0")
             cbTracer.isChecked = false
         }
-        pendingDragCalReset = true
+        pendingBulletBase = repo.getBullet().copy(dragCalibrationFactor = 1.0)
         notifyUser("Catalogue values loaded — review and Save (drag factor resets to 1.0; re-run drop calibration for the new load).")
+    }
+
+    // ---- Chronograph (v20.7): your measured MV over the published one ----
+
+    private fun showChronograph() {
+        val v = layoutInflater.inflate(com.rfsat.vtb.R.layout.dialog_chronograph, null)
+        val mv1 = v.findViewById<android.widget.EditText>(com.rfsat.vtb.R.id.etChronoMv1)
+        val t1 = v.findViewById<android.widget.EditText>(com.rfsat.vtb.R.id.etChronoT1)
+        val mv2 = v.findViewById<android.widget.EditText>(com.rfsat.vtb.R.id.etChronoMv2)
+        val t2 = v.findViewById<android.widget.EditText>(com.rfsat.vtb.R.id.etChronoT2)
+        mv1.setText(binding.etMuzzleVelocity.text.toString())
+        t1.setText(String.format("%.1f",
+            com.rfsat.vtb.environment.EnvironmentManager.current.atmosphere.temperatureC))
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Chronograph measurement")
+            .setView(v)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Apply") { _, _ ->
+                val m1 = mv1.text.toString().toDoubleOrNull()
+                if (m1 == null || m1 <= 0) { notifyUser("Enter the measured MV in fps."); return@setPositiveButton }
+                val temp1 = t1.text.toString().toDoubleOrNull() ?: 15.0
+                binding.etMuzzleVelocity.setText(m1.toString())
+                binding.etMvRefTemp.setText(String.format("%.1f", temp1))
+                val m2 = mv2.text.toString().toDoubleOrNull()
+                val temp2 = t2.text.toString().toDoubleOrNull()
+                var msg = "Chronographed MV applied — review and Save; re-run drop calibration."
+                if (m2 != null && temp2 != null) {
+                    if (kotlin.math.abs(temp1 - temp2) >= 3.0) {
+                        val coeff = (m1 - m2) * 0.3048 / (temp1 - temp2)
+                        binding.etMvTempCoeff.setText(String.format("%.3f", coeff))
+                        msg = "MV + temperature coefficient (%.3f m/s/°C) applied — review and Save; re-run drop calibration.".format(coeff)
+                    } else {
+                        msg = "MV applied; second point ignored (temperatures under 3°C apart cannot resolve a coefficient)."
+                    }
+                }
+                // A new measured MV invalidates the old load calibration.
+                pendingBulletBase = repo.getBullet().copy(dragCalibrationFactor = 1.0)
+                notifyUser(msg)
+            }
+            .show()
+    }
+
+    // ---- Profile CSV export / import (v20.7) ----
+
+    /** Current profile first, then each saved set's (deduped by name). */
+    private fun writeCsv(uri: android.net.Uri) {
+        try {
+            val sets = repo.getSets()
+            val text = when (csvKind) {
+                CsvKind.BULLET -> CsvProfiles.bulletsToCsv(
+                    (listOf(repo.getBullet()) + sets.map { it.bullet }).distinctBy { it.name })
+                CsvKind.RIFLE -> CsvProfiles.riflesToCsv(
+                    (listOf(repo.getRifle()) + sets.map { it.rifle }).distinctBy { it.name })
+                CsvKind.SCOPE -> CsvProfiles.scopesToCsv(
+                    (listOf(repo.getScope()) + sets.map { it.scope }).distinctBy { it.name })
+            }
+            contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+                ?: throw java.io.IOException("no stream")
+            notifyUser("Exported ${text.lineSequence().count { it.isNotBlank() } - 1} profile(s).")
+        } catch (t: Throwable) {
+            com.rfsat.vtb.log.Logger.w("ProfileActivity", "CSV export failed: ${t.message}")
+            notifyUser("Export failed: ${t.message}")
+        }
+    }
+
+    private fun readCsv(uri: android.net.Uri) {
+        try {
+            val text = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                ?: throw java.io.IOException("no stream")
+            when (csvKind) {
+                CsvKind.BULLET -> chooseAndApply(CsvProfiles.bulletsFromCsv(text), { it.name }) { applyImportedBullet(it) }
+                CsvKind.RIFLE -> chooseAndApply(CsvProfiles.riflesFromCsv(text), { it.name }) { applyImportedRifle(it) }
+                CsvKind.SCOPE -> chooseAndApply(CsvProfiles.scopesFromCsv(text), { it.name }) { applyImportedScope(it) }
+            }
+        } catch (t: Throwable) {
+            com.rfsat.vtb.log.Logger.w("ProfileActivity", "CSV import failed: ${t.message}")
+            notifyUser("Import failed: ${t.message}")
+        }
+    }
+
+    private fun <T> chooseAndApply(list: List<T>, label: (T) -> String, apply: (T) -> Unit) {
+        when {
+            list.isEmpty() -> notifyUser("No profiles found in that file.")
+            list.size == 1 -> apply(list[0])
+            else -> androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Choose a profile")
+                .setItems(list.map(label).toTypedArray()) { _, which -> apply(list[which]) }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+    }
+
+    private fun applyImportedBullet(b: BulletProfile) {
+        with(binding) {
+            etBulletName.setText(b.name)
+            etCaliber.setText(b.caliberDiameterIn.toString())
+            etWeightGrains.setText(b.weightGrains.toString())
+            etMuzzleVelocity.setText(b.muzzleVelocityFps.toString())
+            etBallisticCoefficient.setText(b.ballisticCoefficientG1.toString())
+            etMvTempCoeff.setText(b.mvTempCoeffMpsPerC.toString())
+            etMvRefTemp.setText(b.mvRefTempC.toString())
+            cbTracer.isChecked = b.isTracer
+        }
+        pendingBulletBase = b // carries the imported drag calibration factor
+        notifyUser("Bullet “${b.name}” loaded (drag factor %.3f) — review and Save.".format(b.dragCalibrationFactor))
+    }
+
+    private fun applyImportedRifle(r: RifleProfile) {
+        with(binding) {
+            etRifleName.setText(r.name)
+            etBarrelLength.setText(r.barrelLengthIn.toString())
+            etTwistRate.setText(r.twistRateInPerTurn.toString())
+            etZeroDistance.setText(String.format("%.1f",
+                com.rfsat.vtb.ui.UnitsManager.displayDistance(r.zeroDistanceM)))
+        }
+        pendingRifleBase = r // carries sight height + boresight offsets
+        notifyUser("Rifle “${r.name}” loaded — review and Save.")
+    }
+
+    private fun applyImportedScope(sc: ScopeProfile) {
+        with(binding) {
+            etScopeName.setText(sc.name)
+            etZoomMin.setText(sc.zoomMin.toString())
+            etZoomMax.setText(sc.zoomMax.toString())
+            etObjectiveDiameter.setText(sc.objectiveDiameterMm.toString())
+            etFocalLength.setText(sc.focalLengthMm.toString())
+            etHeightAboveBarrel.setText(sc.heightAboveBarrelIn.toString())
+            spinnerClickUnit.setSelection(when (sc.clickUnit) {
+                ClickUnit.MOA_QUARTER -> 0; ClickUnit.MOA_EIGHTH -> 1; ClickUnit.MRAD_TENTH -> 2
+            })
+        }
+        pendingScopeBase = sc // carries the turret-travel figures
+        notifyUser("Scope “${sc.name}” loaded — review and Save.")
     }
 
     // ---- Display & units (v20.0, moved from Home) ----
@@ -453,7 +607,9 @@ class ProfileActivity : BaseActivity() {
 
     private fun saveFromFields() = with(binding) {
         repo.saveRifle(
-            repo.getRifle().copy( // preserve boresight calibration offsets
+            (pendingRifleBase ?: repo.getRifle())
+                .also { pendingRifleBase = null }
+                .copy( // base carries boresight offsets + sight height
                 name = etRifleName.text.toString().ifBlank { RifleProfile.DEFAULT.name },
                 barrelLengthIn = etBarrelLength.text.toString().toDoubleOrNull() ?: RifleProfile.DEFAULT.barrelLengthIn,
                 twistRateInPerTurn = etTwistRate.text.toString().toDoubleOrNull() ?: RifleProfile.DEFAULT.twistRateInPerTurn,
@@ -467,9 +623,8 @@ class ProfileActivity : BaseActivity() {
             // by the drop-calibration solver, not by any text field — is
             // PRESERVED. Constructing a fresh BulletProfile here silently
             // reset it to 1.0 on every save.
-            repo.getBullet()
-                .let { if (pendingDragCalReset) it.copy(dragCalibrationFactor = 1.0) else it }
-                .also { pendingDragCalReset = false }
+            (pendingBulletBase ?: repo.getBullet())
+                .also { pendingBulletBase = null }
                 .copy(
                 name = etBulletName.text.toString().ifBlank { BulletProfile.DEFAULT.name },
                 caliberDiameterIn = etCaliber.text.toString().toDoubleOrNull() ?: BulletProfile.DEFAULT.caliberDiameterIn,
@@ -487,7 +642,11 @@ class ProfileActivity : BaseActivity() {
             else -> ClickUnit.MOA_QUARTER
         }
         repo.saveScope(
-            ScopeProfile(
+            // v20.7: copy() from a base instead of fresh construction — the
+            // old form silently reset the turret-travel fields on every save.
+            (pendingScopeBase ?: repo.getScope())
+                .also { pendingScopeBase = null }
+                .copy(
                 name = etScopeName.text.toString().ifBlank { ScopeProfile.DEFAULT.name },
                 clickUnit = unit,
                 zoomMin = etZoomMin.text.toString().toDoubleOrNull() ?: ScopeProfile.DEFAULT.zoomMin,

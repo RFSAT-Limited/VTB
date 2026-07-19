@@ -29,6 +29,12 @@
 
         <TextView android:id="@+id/tvHeaderRifle" android:text="@string/rifle_profile" android:textStyle="bold" android:textSize="18sp"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="8dp"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="4dp">
+            <Button android:id="@+id/btnRifleCsvExport" android:text="Export CSV" android:textSize="12sp"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+            <Button android:id="@+id/btnRifleCsvImport" android:text="Import CSV" android:textSize="12sp"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+        </LinearLayout>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
             <TextView android:text="Name" android:textSize="12sp" android:layout_width="84dp" android:layout_height="wrap_content" android:layout_gravity="center_vertical"/>
             <EditText android:id="@+id/etRifleName" android:hint="Rifle name" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textSize="14sp"/>
@@ -50,8 +56,16 @@
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:layout_marginBottom="8dp"/>
         <!-- v20.6: factory-ammunition catalogue; fills the fields below as a
              seed for the normal edit-and-save flow. -->
-        <Button android:id="@+id/btnAmmoCatalog" android:text="Choose from catalogue…"
-            android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="4dp"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="4dp">
+            <Button android:id="@+id/btnAmmoCatalog" android:text="Catalogue…" android:textSize="12sp"
+                android:layout_width="0dp" android:layout_weight="1.2" android:layout_height="wrap_content"/>
+            <Button android:id="@+id/btnChronograph" android:text="Chrono…" android:textSize="12sp"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+            <Button android:id="@+id/btnBulletCsvExport" android:text="→CSV" android:textSize="12sp"
+                android:layout_width="0dp" android:layout_weight="0.9" android:layout_height="wrap_content"/>
+            <Button android:id="@+id/btnBulletCsvImport" android:text="CSV→" android:textSize="12sp"
+                android:layout_width="0dp" android:layout_weight="0.9" android:layout_height="wrap_content"/>
+        </LinearLayout>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
             <TextView android:text="Name" android:textSize="12sp" android:layout_width="84dp" android:layout_height="wrap_content" android:layout_gravity="center_vertical"/>
             <EditText android:id="@+id/etBulletName" android:hint="Bullet name" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textSize="14sp"/>
@@ -177,6 +191,12 @@
 
         <TextView android:id="@+id/tvHeaderScope" android:text="@string/scope_profile" android:textStyle="bold" android:textSize="18sp"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:layout_marginBottom="8dp"/>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="4dp">
+            <Button android:id="@+id/btnScopeCsvExport" android:text="Export CSV" android:textSize="12sp"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+            <Button android:id="@+id/btnScopeCsvImport" android:text="Import CSV" android:textSize="12sp"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"/>
+        </LinearLayout>
         <Spinner android:id="@+id/spinnerScopePreset" android:layout_width="match_parent" android:layout_height="wrap_content"/>
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
             <TextView android:text="Name" android:textSize="12sp" android:layout_width="84dp" android:layout_height="wrap_content" android:layout_gravity="center_vertical"/>
