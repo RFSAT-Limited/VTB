@@ -59,6 +59,7 @@ class ProfileActivity : BaseActivity() {
         setupDisplaySpinners()
         setupFieldUnits()
         binding.btnAmmoCatalog.setOnClickListener { showAmmoCatalog() }
+        binding.btnScopeCatalog.setOnClickListener { showScopeCatalog() }
         binding.btnChronograph.setOnClickListener { showChronograph() }
         binding.btnBulletCsvExport.setOnClickListener { csvKind = CsvKind.BULLET; csvCreate.launch("vtb_bullets.csv") }
         binding.btnBulletCsvImport.setOnClickListener { csvKind = CsvKind.BULLET; csvOpen.launch(arrayOf("*/*")) }
@@ -168,6 +169,50 @@ class ProfileActivity : BaseActivity() {
         lv.setOnItemClickListener { _, _, pos, _ ->
             val b = current.getOrNull(pos) ?: return@setOnItemClickListener
             applyCatalogEntry(b.toBulletProfile())
+            dlg.dismiss()
+        }
+        dlg.show()
+    }
+
+    private fun showScopeCatalog() {
+        val v = layoutInflater.inflate(com.rfsat.vtb.R.layout.dialog_scope_catalog, null)
+        val spBrand = v.findViewById<android.widget.Spinner>(com.rfsat.vtb.R.id.spScBrand)
+        val spClick = v.findViewById<android.widget.Spinner>(com.rfsat.vtb.R.id.spScClick)
+        val spMag = v.findViewById<android.widget.Spinner>(com.rfsat.vtb.R.id.spScMag)
+        val tvCount = v.findViewById<android.widget.TextView>(com.rfsat.vtb.R.id.tvScCount)
+        val lv = v.findViewById<android.widget.ListView>(com.rfsat.vtb.R.id.lvScResults)
+
+        fun spinner(sp: android.widget.Spinner, items: List<String>) {
+            val a = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, items)
+            a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            sp.adapter = a
+        }
+        spinner(spBrand, ScopeCatalog.brands())
+        spinner(spClick, ScopeCatalog.clickUnits())
+        spinner(spMag, ScopeCatalog.magClasses())
+
+        var current: List<ScopeCatalog.Entry> = emptyList()
+        fun refresh() {
+            current = ScopeCatalog.filter(
+                spBrand.selectedItem as String, spClick.selectedItem as String, spMag.selectedItem as String)
+            tvCount.text = "${current.size} of ${ScopeCatalog.entries.size} scopes"
+            lv.adapter = android.widget.ArrayAdapter(
+                this, android.R.layout.simple_list_item_1, current.map { it.label() })
+        }
+        val onSel = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: android.widget.AdapterView<*>?, w: android.view.View?, pos: Int, id: Long) = refresh()
+            override fun onNothingSelected(p: android.widget.AdapterView<*>?) {}
+        }
+        listOf(spBrand, spClick, spMag).forEach { it.onItemSelectedListener = onSel }
+        refresh()
+
+        val dlg = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Scope catalogue")
+            .setView(v)
+            .setNegativeButton("Cancel", null)
+            .create()
+        lv.setOnItemClickListener { _, _, pos, _ ->
+            current.getOrNull(pos)?.let { applyImportedScope(it.toScopeProfile()) }
             dlg.dismiss()
         }
         dlg.show()
