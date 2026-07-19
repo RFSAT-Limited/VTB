@@ -56,6 +56,14 @@ object FieldUnits {
         private val prefs = ctx.getSharedPreferences("vtb_field_units", Context.MODE_PRIVATE)
         private var unitIdx = prefs.getInt(kind.prefsKey, 0).coerceIn(0, kind.units.size - 1)
 
+        // v20.16: cache the EXACT canonical value and the display string we
+        // last wrote. A unit switch re-derives the display from this cache
+        // instead of re-parsing the ROUNDED box — so 40 gr -> g -> gr comes
+        // back to exactly 40. The cache is trusted only while the box still
+        // holds what we wrote; if the user typed something else, we reparse.
+        private var cachedCanonical: Double? = null
+        private var lastShown: String? = null
+
         init {
             spinner.adapter = ArrayAdapter(
                 ctx, android.R.layout.simple_spinner_item, kind.units.map { it.label }
@@ -64,8 +72,7 @@ object FieldUnits {
             spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(p: android.widget.AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
                     if (pos == unitIdx) return
-                    // live-convert the number the user is looking at
-                    val canonical = readCanonicalUsing(unitIdx)
+                    val canonical = currentCanonical() // exact when unedited
                     unitIdx = pos
                     prefs.edit().putInt(kind.prefsKey, pos).apply()
                     if (canonical != null) showCanonical(canonical)
@@ -77,20 +84,34 @@ object FieldUnits {
         private fun readCanonicalUsing(idx: Int): Double? =
             edit.text.toString().toDoubleOrNull()?.let { toCanonical(kind, idx, it) }
 
+        /**
+         * Canonical value of what is in the box. If the box still holds the
+         * exact string we last wrote, return the cached exact canonical (no
+         * round-trip error); otherwise the user edited it, so parse the text.
+         */
+        private fun currentCanonical(): Double? {
+            val text = edit.text.toString()
+            val cached = cachedCanonical
+            if (cached != null && text == lastShown) return cached
+            return readCanonicalUsing(unitIdx)
+        }
+
         /** Current field value in canonical units, or null if blank/invalid. */
-        fun get(): Double? = readCanonicalUsing(unitIdx)
+        fun get(): Double? = currentCanonical()
 
         /** Show a canonical value in the currently selected unit. */
         fun set(canonical: Double) = showCanonical(canonical)
 
         private fun showCanonical(canonical: Double) {
-            val shown = toDisplay(kind, unitIdx, canonical)
-            edit.setText(trimNumber(shown))
+            cachedCanonical = canonical // remember the EXACT value we displayed
+            val shown = trimNumber(toDisplay(kind, unitIdx, canonical))
+            lastShown = shown
+            edit.setText(shown)
         }
 
         fun unitLabel(): String = kind.units[unitIdx].label
 
         private fun trimNumber(v: Double): String =
-            if (v == v.toLong().toDouble()) v.toLong().toString() else "%.4f".format(v).trimEnd('0').trimEnd('.')
+            if (v == v.toLong().toDouble()) v.toLong().toString() else "%.6f".format(v).trimEnd('0').trimEnd('.')
     }
 }
