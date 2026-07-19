@@ -374,6 +374,14 @@ class ProfileActivity : BaseActivity() {
     // ---- Display & units (v20.0, moved from Home) ----
 
     private fun setupDisplaySpinners() {
+        // v20.14: Log-tab visibility toggle. Re-inflating the nav (recreate)
+        // is the simplest way to apply it everywhere consistently.
+        binding.swLogTab.isChecked = logTabEnabled()
+        binding.swLogTab.setOnCheckedChangeListener { _, checked ->
+            getSharedPreferences("vtb_prefs", MODE_PRIVATE).edit().putBoolean("log_tab_visible", checked).apply()
+            recreate()
+        }
+
         val um = com.rfsat.vtb.ui.UnitsManager
         val tm = com.rfsat.vtb.ui.ThemeManager
 

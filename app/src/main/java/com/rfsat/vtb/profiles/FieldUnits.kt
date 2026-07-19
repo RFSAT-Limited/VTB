@@ -24,8 +24,8 @@ object FieldUnits {
     /** A convertible quantity: label pairs + canonical<->display factors. */
     enum class Kind(val units: List<UnitDef>, val prefsKey: String) {
         CALIBER(listOf(UnitDef("in", 1.0), UnitDef("mm", 25.4)), "u_caliber"),
-        WEIGHT(listOf(UnitDef("gr", 1.0), UnitDef("g", 1.0 / 0.06479891)), "u_weight"),
-        VELOCITY(listOf(UnitDef("fps", 1.0), UnitDef("m/s", 1.0 / 0.3048)), "u_velocity"),
+        WEIGHT(listOf(UnitDef("gr", 1.0), UnitDef("g", 0.06479891)), "u_weight"),
+        VELOCITY(listOf(UnitDef("fps", 1.0), UnitDef("m/s", 0.3048)), "u_velocity"),
         DISTANCE(listOf(UnitDef("m", 1.0), UnitDef("yd", 1.0 / 0.9144), UnitDef("ft", 1.0 / 0.3048)), "u_distance"),
         LENGTH_IN(listOf(UnitDef("in", 1.0), UnitDef("mm", 25.4), UnitDef("cm", 2.54)), "u_length"),
         TEMPERATURE(listOf(UnitDef("\u00b0C", 1.0), UnitDef("\u00b0F", 1.0)), "u_temperature");

@@ -84,6 +84,9 @@ open class BaseActivity : AppCompatActivity() {
         // fifth slot), so the v17.1 fake-highlight workaround is gone —
         // selection and tinting come from BottomNavigationView itself.
         val nav = findViewById<BottomNavigationView>(R.id.bottomNav) ?: return
+        // v20.14: Log tab is optional (toggle in Settings). Hide the menu
+        // item when disabled; the swipe order is filtered to match below.
+        nav.menu.findItem(R.id.nav_log)?.isVisible = logTabEnabled()
         // Deselect the whole group for screens outside the tab set (the
         // retired About screen passes 0).
         if (nav.menu.findItem(selectedItemId) != null) {
@@ -130,7 +133,15 @@ open class BaseActivity : AppCompatActivity() {
     // interactive horizontal controls via swipeExemptViews().
 
     private var navSelectedItemId: Int = 0
-    private val tabOrder = intArrayOf(R.id.nav_home, R.id.nav_capture, R.id.nav_results, R.id.nav_profiles, R.id.nav_log)
+    protected fun logTabEnabled(): Boolean =
+        getSharedPreferences("vtb_prefs", MODE_PRIVATE).getBoolean("log_tab_visible", true)
+
+    // v20.14: swipe order excludes Log when the tab is hidden.
+    private val tabOrder: IntArray
+        get() = if (logTabEnabled())
+            intArrayOf(R.id.nav_home, R.id.nav_capture, R.id.nav_results, R.id.nav_profiles, R.id.nav_log)
+        else
+            intArrayOf(R.id.nav_home, R.id.nav_capture, R.id.nav_results, R.id.nav_profiles)
     private var swipeDownX = 0f
     private var swipeDownY = 0f
     private var swipeDownT = 0L

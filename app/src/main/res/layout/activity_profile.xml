@@ -26,6 +26,10 @@
             android:layout_width="wrap_content" android:layout_height="wrap_content"/>
         <Spinner android:id="@+id/spinnerUnits"
             android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="12dp"/>
+        <Switch
+            android:id="@+id/swLogTab" android:text="Show Log tab"
+            android:layout_marginTop="8dp" android:layout_marginBottom="4dp"
+            android:layout_width="match_parent" android:layout_height="wrap_content"/>
 
         <TextView android:id="@+id/tvHeaderRifle" android:text="@string/rifle_profile" android:textStyle="bold" android:textSize="18sp"
             android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="8dp"/>
