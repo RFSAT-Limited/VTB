@@ -95,9 +95,10 @@ class MainActivity : BaseActivity() {
         // v20.11: names only — the specs live in Settings. The active set
         // name still leads (if any) so Home shows WHICH selection is active.
         val setLine = repo.getActiveSetName()?.let { "Set: $it\n" } ?: ""
-        binding.tvSummary.text = setLine + getString(
-            com.rfsat.vtb.R.string.active_profile_summary,
-            rifle.name, bullet.name, scope.name
-        )
+        // v1.20.24: built directly in code - the previous format string lived
+        // in strings.xml (never shipped in patch zips), and a stale/mis-ordered
+        // placeholder there rendered the rifle name on the bullet line.
+        binding.tvSummary.text = setLine +
+            "Rifle: ${rifle.name}\nBullet: ${bullet.name}\nScope: ${scope.name}"
     }
 }

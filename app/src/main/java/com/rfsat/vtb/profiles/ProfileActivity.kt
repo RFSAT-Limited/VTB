@@ -90,6 +90,7 @@ class ProfileActivity : BaseActivity() {
         binding.btnLoadSet.setOnClickListener { loadSelectedSet() }
         binding.btnDeleteSet.setOnClickListener { deleteSelectedSet() }
         repo.seedDefaultSetsIfEmpty() // v20.22: user's rigs as ready-made sets
+        repo.migrateSeededBulletBrand() // v1.20.24: AEA-branded pellet -> EDgun
         refreshSetSpinner()
     }
 
@@ -506,15 +507,32 @@ class ProfileActivity : BaseActivity() {
 
     // ---- Profile sets (v16.0) ----
 
+    private var suppressSetCallback = false
+
     private fun refreshSetSpinner() {
         val names = repo.getSets().map { it.name }
+        suppressSetCallback = true // adapter assignment fires one selection callback
         binding.spinnerProfileSets.adapter = ArrayAdapter(
             this, android.R.layout.simple_spinner_dropdown_item,
             if (names.isEmpty()) listOf("(no saved sets)") else names
         )
         // v20.10: point the spinner at the active set so Settings agrees with Home.
         repo.getActiveSetName()?.let { active ->
-            names.indexOf(active).takeIf { it >= 0 }?.let { binding.spinnerProfileSets.setSelection(it) }
+            names.indexOf(active).takeIf { it >= 0 }?.let {
+                suppressSetCallback = true
+                binding.spinnerProfileSets.setSelection(it)
+            }
+        }
+        // v1.20.24: SELECTING a set loads it immediately - no separate Load
+        // press needed (Load button kept as a harmless alias). The suppress
+        // flag keeps programmatic selections (adapter set, restore-on-open)
+        // from re-triggering loads.
+        binding.spinnerProfileSets.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (suppressSetCallback) { suppressSetCallback = false; return }
+                if (repo.getSets().isNotEmpty()) loadSelectedSet()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
     }
 

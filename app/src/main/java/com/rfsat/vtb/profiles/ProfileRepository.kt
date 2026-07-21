@@ -126,13 +126,13 @@ class ProfileRepository(context: Context) {
             ProfileSet(
                 name = "AEA Element — X-Sight LTV",
                 rifle = rifle("AEA Element .22") ?: return,
-                bullet = bullet("AEA", "Element .22 RN 16gr") ?: return,
+                bullet = bullet("EDgun", ".22 RN 16gr") ?: return,
                 scope = scope("ATN X-Sight LTV 5-15x") ?: return
             ),
             ProfileSet(
                 name = "AEA Element — X-Sight 5 LRF",
                 rifle = rifle("AEA Element .22") ?: return,
-                bullet = bullet("AEA", "Element .22 RN 16gr") ?: return,
+                bullet = bullet("EDgun", ".22 RN 16gr") ?: return,
                 scope = scope("ATN X-Sight 5 LRF 5-25x") ?: return
             )
         )
@@ -140,6 +140,22 @@ class ProfileRepository(context: Context) {
             .putString(KEY_SETS, gson.toJson(seeds))
             .putBoolean(KEY_SETS_SEEDED, true)
             .apply()
+    }
+
+    /**
+     * v1.20.24 one-time fix-up: earlier seeds mislabelled the user's pellet
+     * as an "AEA" bullet (AEA is the rifle maker; the pellets are EDgun).
+     * Rename it in any stored set and in the active bullet profile.
+     */
+    fun migrateSeededBulletBrand() {
+        val wrong = "AEA Element .22 RN 16gr"
+        val fixedName = "EDgun .22 RN 16gr"
+        var changed = false
+        val sets = getSets().map { set ->
+            if (set.bullet.name == wrong) { changed = true; set.copy(bullet = set.bullet.copy(name = fixedName)) } else set
+        }
+        if (changed) prefs.edit().putString(KEY_SETS, gson.toJson(sets)).apply()
+        if (getBullet().name == wrong) saveBullet(getBullet().copy(name = fixedName))
     }
 
     fun saveSet(set: ProfileSet) {

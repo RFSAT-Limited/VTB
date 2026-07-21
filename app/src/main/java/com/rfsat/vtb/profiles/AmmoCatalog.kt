@@ -101,8 +101,9 @@ object AmmoCatalog {
         Entry("Hornady", "ELD Match", "6.5 CM", D264, 140.0, 2710.0, 0.646, "Match"),
         Entry("Federal", "American Eagle OTM", "6.5 CM", D264, 140.0, 2700.0, 0.580, "Match"),
         // ---- Airgun pellets (diabolo; JSB-published G1 BCs) ----
-        // User's AEA Element load: .22/5.5mm 16.0gr round nose, BC 0.032 (user-measured)
-        Entry("AEA", "Element .22 RN 16gr", ".22 pellet", 0.2165, 16.0, 930.0, 0.032, "Pellet", pellet = true),
+        // User's load for the AEA Element rifle: EDgun (RU) .22/5.5mm 16.0gr
+        // (1.038 g) round nose, BC 0.032 (user-measured).
+        Entry("EDgun", ".22 RN 16gr", ".22 pellet", 0.2165, 16.0, 930.0, 0.032, "Pellet", pellet = true),
         Entry("JSB", "Exact Jumbo", ".22 pellet", 0.2165, 15.89, 950.0, 0.033, "Pellet", pellet = true),
         Entry("JSB", "Exact Jumbo Heavy", ".22 pellet", 0.2165, 18.13, 1000.0, 0.036, "Pellet", pellet = true),
         Entry("JSB", "Exact King", ".25 pellet", 0.250, 25.39, 950.0, 0.041, "Pellet", pellet = true),
