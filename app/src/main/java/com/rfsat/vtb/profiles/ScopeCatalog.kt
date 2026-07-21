@@ -101,6 +101,20 @@ object ScopeCatalog {
         //      WiFi streaming via ATN Connect 5, Recoil Activated Video) ----
         // X-Sight LTV: FOV 240 ft @ 5x base = 5.0deg (verified, multiple sources; 720p record)
         Entry("ATN", "X-Sight LTV 5-15x", 5.0, 15.0, 50.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 100.0, 2.2, baseFovDeg = 5.0, family = "Digital day/night"),
+        Entry("ATN", "X-Sight LTV 3-9x", 3.0, 9.0, 30.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 90.0, 2.2, baseFovDeg = 8.0, family = "Digital day/night"),
+        // X-Sight 4K Pro: FOV VERIFIED — 3-14x = 460 ft/9.0deg @3x base,
+        // 5-20x = 240 ft/5.0deg @5x base (ATN site + multiple resellers).
+        Entry("ATN", "X-Sight 4K Pro 3-14x", 3.0, 14.0, 50.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 100.0, 2.2, baseFovDeg = 9.0, family = "Digital day/night"),
+        Entry("ATN", "X-Sight 4K Pro 5-20x", 5.0, 20.0, 70.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 110.0, 2.2, baseFovDeg = 5.0, family = "Digital day/night"),
+        // X-Sight 4K Buckhunter: 5-20x FOV VERIFIED 240 ft/5.0deg; 3-14x
+        // follows the same optics as the Pro 3-14x (9.0deg).
+        Entry("ATN", "X-Sight 4K Buckhunter 3-14x", 3.0, 14.0, 50.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 100.0, 2.2, baseFovDeg = 9.0, family = "Digital day/night"),
+        Entry("ATN", "X-Sight 4K Buckhunter 5-20x", 5.0, 20.0, 70.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 110.0, 2.2, baseFovDeg = 5.0, family = "Digital day/night"),
+        // X-Sight II HD: 3-14x FOV VERIFIED 9.0deg (OpticsPlanet spec); 5-20x
+        // pattern-derived at 5.0deg (same optics class as later 5-20x models,
+        // unconfirmed) -> user should verify against the scope's own FOV.
+        Entry("ATN", "X-Sight II HD 3-14x", 3.0, 14.0, 50.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 100.0, 2.2, baseFovDeg = 9.0, family = "Digital day/night"),
+        Entry("ATN", "X-Sight II HD 5-20x", 5.0, 20.0, 70.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 110.0, 2.2, baseFovDeg = 5.0, family = "Digital day/night"),
         Entry("ATN", "X-Sight 5 3-15x", 3.0, 15.0, 50.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 100.0, 2.2, baseFovDeg = 9.0, family = "Digital day/night"),
         Entry("ATN", "X-Sight 5 5-25x", 5.0, 25.0, 50.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 110.0, 2.2, baseFovDeg = 6.3, family = "Digital day/night"),
         Entry("ATN", "X-Sight 5 LRF 3-15x", 3.0, 15.0, 50.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 100.0, 2.2, baseFovDeg = 9.0, family = "Digital day/night"),
