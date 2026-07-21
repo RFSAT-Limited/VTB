@@ -33,11 +33,15 @@ class ProfileActivity : BaseActivity() {
         )
         binding.spinnerScopePreset.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                // v1.20.28: position memory (see set spinner) — adapter
+                // (re)assignment fires one callback per Settings open. Also
+                // fixes a v1.20.26 defect: the name-comparison guard compared
+                // against an accidentally-literal template string (a patch
+                // escaping artifact), so it never matched.
+                if (position == lastPresetSpinnerPos) return
+                lastPresetSpinnerPos = position
                 val entry = ScopeCatalog.entries.getOrNull(position) ?: return // Custom -> leave fields
-                // State comparison instead of a suppress flag (same eaten-
-                // selection hazard as the set spinner): if the fields already
-                // hold this scope, the selection is programmatic/no-op.
-                if (binding.etScopeName.text.toString() == "${'$'}{entry.brand} ${'$'}{entry.model}") return
+                if (binding.etScopeName.text.toString() == entry.brand + " " + entry.model) return
                 applyImportedScope(entry.toScopeProfile())
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -518,6 +522,9 @@ class ProfileActivity : BaseActivity() {
 
     // ---- Profile sets (v16.0) ----
 
+    private var lastSetSpinnerPos = -1
+    private var lastPresetSpinnerPos = -1
+
     private fun refreshSetSpinner() {
         val names = repo.getSets().map { it.name }
         binding.spinnerProfileSets.adapter = ArrayAdapter(
@@ -525,8 +532,12 @@ class ProfileActivity : BaseActivity() {
             if (names.isEmpty()) listOf("(no saved sets)") else names
         )
         // v20.10: point the spinner at the active set so Settings agrees with Home.
+        lastSetSpinnerPos = 0 // adapter reset lands on 0 unless restored below
         repo.getActiveSetName()?.let { active ->
-            names.indexOf(active).takeIf { it >= 0 }?.let { binding.spinnerProfileSets.setSelection(it) }
+            names.indexOf(active).takeIf { it >= 0 }?.let {
+                binding.spinnerProfileSets.setSelection(it)
+                lastSetSpinnerPos = it
+            }
         }
         // v1.20.26: SELECTING a set loads it — decided by STATE COMPARISON,
         // not suppression flags. Spinner.setSelection only fires its callback
@@ -536,6 +547,15 @@ class ProfileActivity : BaseActivity() {
         // active set name is idempotent and immune to callback timing.
         binding.spinnerProfileSets.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                // v1.20.28: POSITION MEMORY — the spinner fires one callback
+                // whenever its adapter is (re)assigned, i.e. on every Settings
+                // open. Only a position CHANGE from the last settled one is a
+                // user action; the settled position is recorded by
+                // refreshSetSpinner. (The active-name check alone missed the
+                // no-active-set case — a manual edit detaches the set — which
+                // toasted "loaded" on every Settings visit.)
+                if (position == lastSetSpinnerPos) return
+                lastSetSpinnerPos = position
                 val set = repo.getSets().getOrNull(position) ?: return
                 if (set.name == repo.getActiveSetName()) return // already active
                 loadSelectedSet()
@@ -748,7 +768,9 @@ class ProfileActivity : BaseActivity() {
 
             // Select the matching catalogue entry (or Custom, the last item).
             val presetIdx = ScopeCatalog.entries.indexOfFirst { "${it.brand} ${it.model}" == scope.name }
-            spinnerScopePreset.setSelection(if (presetIdx >= 0) presetIdx else ScopeCatalog.entries.size)
+            val settled = if (presetIdx >= 0) presetIdx else ScopeCatalog.entries.size
+            spinnerScopePreset.setSelection(settled)
+            lastPresetSpinnerPos = settled
         }
         fillScopeFields(scope)
     }
