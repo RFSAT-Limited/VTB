@@ -99,6 +99,8 @@ object ScopeCatalog {
         // ---- ATN digital day/night (X-Sight 5 family; FOV verified: 9.0deg
         //      at 3x base, 6.3deg at 5x base; record to microSD up to 4K,
         //      WiFi streaming via ATN Connect 5, Recoil Activated Video) ----
+        // X-Sight LTV: FOV 240 ft @ 5x base = 5.0deg (verified, multiple sources; 720p record)
+        Entry("ATN", "X-Sight LTV 5-15x", 5.0, 15.0, 50.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 100.0, 2.2, baseFovDeg = 5.0, family = "Digital day/night"),
         Entry("ATN", "X-Sight 5 3-15x", 3.0, 15.0, 50.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 100.0, 2.2, baseFovDeg = 9.0, family = "Digital day/night"),
         Entry("ATN", "X-Sight 5 5-25x", 5.0, 25.0, 50.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 110.0, 2.2, baseFovDeg = 6.3, family = "Digital day/night"),
         Entry("ATN", "X-Sight 5 LRF 3-15x", 3.0, 15.0, 50.0, ClickUnit.MRAD_TENTH, mrad(30.0), mrad(30.0), 100.0, 2.2, baseFovDeg = 9.0, family = "Digital day/night"),
