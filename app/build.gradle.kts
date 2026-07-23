@@ -14,8 +14,8 @@ android {
         applicationId = "com.VTBC"
         minSdk = 26
         targetSdk = 36
-        versionCode = 145
-        versionName = "1.20.30" // scheme: <brand>.<major>.<minor>; brand 1 = current VTB
+        versionCode = 146
+        versionName = "1.20.31" // scheme: <brand>.<major>.<minor>; brand 1 = current VTB
     }
 
     signingConfigs {
@@ -35,8 +35,30 @@ android {
             isMinifyEnabled = false
         }
         release {
+            // R8/obfuscation stays OFF deliberately. Play warns that no
+            // deobfuscation (mapping) file is attached — that warning is
+            // informational and does not apply here: with minification off
+            // nothing is renamed, so crash stack traces already arrive fully
+            // readable, which is exactly what a mapping file would restore.
+            // Enabling R8 would rename the fields of the Gson-persisted data
+            // classes (BulletProfile/RifleProfile/ScopeProfile/ProfileSet,
+            // the analysis payload and the AppBackup document), silently
+            // changing every stored JSON key, so it must not be switched on
+            // without keep rules for those classes plus a save/load/backup
+            // round-trip test.
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+
+            // v1.20.31: answers Play's second warning — the bundle carries
+            // native code (CameraX ships libimage_processing_util_jni.so) with
+            // no debug symbols. This packages the symbol table into the AAB's
+            // metadata, where Play picks it up automatically; it is metadata
+            // only and is not shipped to devices, so the installed app is
+            // unchanged. Requires an NDK on the build machine to extract the
+            // symbols (GitHub's ubuntu runners include one).
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
             if (System.getenv("ANDROID_KEYSTORE_PATH") != null) {
                 signingConfig = signingConfigs.getByName("release")
             }
