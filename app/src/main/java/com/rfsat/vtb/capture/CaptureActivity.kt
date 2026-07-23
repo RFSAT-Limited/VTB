@@ -488,7 +488,17 @@ class CaptureActivity : BaseActivity() {
     private fun startCamera() {
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
-            val provider = providerFuture.get()
+            // v1.20.29: CameraX 1.4 (required for 16 KB page-size support)
+            // performs stricter camera-availability checks than 1.3.4 and can
+            // throw where the old version silently continued — a throw inside
+            // this listener would otherwise surface as an opaque crash.
+            val provider = try {
+                providerFuture.get()
+            } catch (t: Throwable) {
+                Logger.e(TAG, "Camera provider unavailable", t)
+                notifyUser("Camera unavailable on this device — Import still works. See the Log tab.")
+                return@addListener
+            }
             val preview = Preview.Builder().build().also {
                 it.setSurfaceProvider(binding.previewView.surfaceProvider)
             }
@@ -509,7 +519,13 @@ class CaptureActivity : BaseActivity() {
             videoCapture = capture
 
             provider.unbindAll()
-            val camera = provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture)
+            val camera = try {
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture)
+            } catch (t: Throwable) {
+                Logger.e(TAG, "Camera bind failed", t)
+                notifyUser("Could not open the camera — Import still works. See the Log tab.")
+                return@addListener
+            }
             boundCamera = camera
             configureCaptureForAnalysis(camera)
             // Auto-FOV: fill the field from the real optics now and whenever

@@ -13,6 +13,39 @@ open class BaseActivity : AppCompatActivity() {
         runCatching { enterFullScreen() }
     }
 
+    override fun onResume() {
+        super.onResume()
+        runCatching { applyImeInsets() }
+    }
+
+    private var imeInsetsAttached = false
+
+    /**
+     * v1.20.29 (targetSdk 36): Android 15+ ENFORCES edge-to-edge for apps
+     * targeting 35 or higher — the framework no longer fits content inside
+     * the system window, so the default "resize for the keyboard" behaviour
+     * this app relied on (see enterFullScreen below) no longer applies and
+     * EditTexts on Capture/Settings could end up underneath the IME.
+     *
+     * Restoring it explicitly: pad the content frame by the IME inset. With
+     * no keyboard showing the inset is zero, so the current appearance is
+     * unchanged; when the keyboard opens, content lifts above it exactly as
+     * before. Deliberately NOT padding by systemBars — the bars are hidden
+     * (immersive), and padding by them would make the layout jump whenever
+     * a transient swipe revealed them.
+     */
+    private fun applyImeInsets() {
+        if (imeInsetsAttached) return
+        val content = findViewById<android.view.View>(android.R.id.content) ?: return
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(content) { v, insets ->
+            val imeBottom = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom
+            v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, imeBottom)
+            insets
+        }
+        androidx.core.view.ViewCompat.requestApplyInsets(content)
+        imeInsetsAttached = true
+    }
+
     /**
      * Themed replacement for Toast (v18.1). System Toasts render in the
      * OS palette — bright white text regardless of the app theme, which in

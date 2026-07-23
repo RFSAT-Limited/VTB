@@ -73,6 +73,10 @@ class ProfileActivity : BaseActivity() {
         binding.btnAmmoCatalog.setOnClickListener { showAmmoCatalog() }
         binding.btnScopeCatalog.setOnClickListener { showScopeCatalog() }
         binding.btnRifleCatalog.setOnClickListener { showRifleCatalog() }
+        binding.btnBackupExport.setOnClickListener {
+            backupCreate.launch("VTB_backup_${com.rfsat.vtb.BuildConfig.VERSION_NAME}.json")
+        }
+        binding.btnBackupRestore.setOnClickListener { backupOpen.launch(arrayOf("application/json", "text/plain", "*/*")) }
         binding.cbTracer.setOnCheckedChangeListener { _, on -> if (on) binding.cbPellet.isChecked = false }
         binding.cbPellet.setOnCheckedChangeListener { _, on -> if (on) binding.cbTracer.isChecked = false }
         binding.btnChronograph.setOnClickListener { showChronograph() }
@@ -84,7 +88,8 @@ class ProfileActivity : BaseActivity() {
         binding.btnScopeCsvImport.setOnClickListener { csvKind = CsvKind.SCOPE; csvOpen.launch(arrayOf("*/*")) }
 
         listOf(binding.tvHeaderDisplay, binding.tvHeaderRifle, binding.tvHeaderBullet, binding.tvHeaderScope,
-               binding.tvHeaderDropCal, binding.tvHeaderWindCal, binding.tvHeaderSets).forEach {
+               binding.tvHeaderDropCal, binding.tvHeaderWindCal, binding.tvHeaderSets,
+               binding.tvHeaderBackup).forEach {
             it.paintFlags = it.paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG
         }
 
@@ -140,6 +145,73 @@ class ProfileActivity : BaseActivity() {
     private val csvOpen = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) readCsv(uri) }
+
+    // v1.20.30: whole-app backup/restore (see backup/AppBackup.kt).
+    private val backupCreate = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> if (uri != null) writeBackup(uri) }
+
+    private val backupOpen = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) readBackup(uri) }
+
+    private fun writeBackup(uri: android.net.Uri) {
+        try {
+            val json = com.rfsat.vtb.backup.AppBackup.export(this)
+            contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+                ?: throw java.io.IOException("no stream")
+            notifyUser("Backup saved. Keep it somewhere off the phone \u2014 it holds every profile, set and calibration.")
+        } catch (t: Throwable) {
+            com.rfsat.vtb.log.Logger.w("ProfileActivity", "Backup export failed: ${t.message}")
+            notifyUser("Backup failed: ${t.message}")
+        }
+    }
+
+    private fun readBackup(uri: android.net.Uri) {
+        val json = try {
+            contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                ?: throw java.io.IOException("no stream")
+        } catch (t: Throwable) {
+            notifyUser("Could not read that file: ${t.message}"); return
+        }
+        val summary = com.rfsat.vtb.backup.AppBackup.inspect(json).getOrElse { t ->
+            notifyUser("Not a usable backup: ${t.message}"); return
+        }
+        val when_ = java.text.SimpleDateFormat("d MMM yyyy HH:mm", java.util.Locale.getDefault())
+            .format(java.util.Date(summary.createdMs))
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Restore backup?")
+            .setMessage(
+                "From VTB ${summary.versionName}, saved ${when_}.\n" +
+                "${summary.keys} stored values across ${summary.stores} sections.\n\n" +
+                "This REPLACES everything currently stored \u2014 profiles, profile sets, " +
+                "calibrations, units and preferences. VTB will close afterwards; reopen it " +
+                "to load the restored data."
+            )
+            .setPositiveButton("Restore") { _, _ ->
+                com.rfsat.vtb.backup.AppBackup.restore(this, json)
+                    .onSuccess { n ->
+                        androidx.appcompat.app.AlertDialog.Builder(this)
+                            .setTitle("Restored")
+                            .setMessage("$n values restored. VTB will now close \u2014 reopen it to continue.")
+                            .setCancelable(false)
+                            .setPositiveButton("Close VTB") { _, _ ->
+                                finishAffinity()
+                                // Singletons (analysis, environment, theme) read their
+                                // stores at process start, so end the process rather
+                                // than leave stale in-memory state over fresh data.
+                                kotlin.system.exitProcess(0)
+                            }
+                            .show()
+                    }
+                    .onFailure { t ->
+                        com.rfsat.vtb.log.Logger.w("ProfileActivity", "Restore failed: ${t.message}")
+                        notifyUser("Restore failed: ${t.message}")
+                    }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
 
     private fun showAmmoCatalog() {
         val v = layoutInflater.inflate(com.rfsat.vtb.R.layout.dialog_ammo_catalog, null)

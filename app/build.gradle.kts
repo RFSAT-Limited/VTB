@@ -5,14 +5,17 @@ plugins {
 
 android {
     namespace = "com.rfsat.vtb"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.rfsat.vtb"
+        // Play listing identity. NOTE: this is the applicationId only — the
+        // Kotlin/resource namespace stays com.rfsat.vtb (above), so no source
+        // file moves. An applicationId is PERMANENT once published.
+        applicationId = "com.VTBC"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 143
-        versionName = "1.20.28" // scheme: <brand>.<major>.<minor>; brand 1 = current VTB
+        targetSdk = 36
+        versionCode = 145
+        versionName = "1.20.30" // scheme: <brand>.<major>.<minor>; brand 1 = current VTB
     }
 
     signingConfigs {
@@ -65,7 +68,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     // CameraX — video capture of the vapor trail
-    val cameraxVersion = "1.3.4"
+    val cameraxVersion = "1.4.2"
     implementation("androidx.camera:camera-core:$cameraxVersion")
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
